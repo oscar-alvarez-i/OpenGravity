@@ -1,0 +1,18 @@
+[
+  {
+    "role": "User",
+    "content": "What is my favorite color?"
+  },
+  {
+    "role": "Assistant",
+    "content": "You haven't told me your favorite color yet. What is it?"
+  },
+  {
+    "role": "User",
+    "content": "It is blue."
+  },
+  {
+    "role": "Assistant",
+    "content": "Got it! Your favorite color is blue. I will remember that."
+  }
+]

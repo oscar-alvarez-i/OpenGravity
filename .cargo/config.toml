@@ -1,0 +1,16 @@
+[build]
+target-dir = "target"
+
+[term]
+verbose = false
+
+[future-incompat-report]
+frequency = "never"
+
+[net]
+retry = 2
+
+[alias]
+cf = "fmt --check"
+ct = "test -q"
+cc = "clippy --all-targets --all-features -- -D warnings"

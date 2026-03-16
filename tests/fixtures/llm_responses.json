@@ -1,0 +1,6 @@
+{
+  "greeting": "Hello! I am OpenGravity. How can I help you today?",
+  "tool_call_time": "I'll check the current time for you.\nTOOL:get_current_time",
+  "final_answer_time": "The current time is 2024-03-15T20:00:00Z.",
+  "unauthorized": "Unauthorized. Go away."
+}
