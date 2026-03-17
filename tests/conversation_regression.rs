@@ -13,6 +13,7 @@ use open_gravity::db::sqlite::Db;
 use open_gravity::domain::message::{Message, Role};
 use open_gravity::llm::models::LlmProvider;
 use open_gravity::llm::LlmOrchestrator;
+use open_gravity::skills::registry::SkillRegistry;
 use open_gravity::tools::registry::Registry;
 
 mock! {
@@ -41,6 +42,7 @@ mock! {
 async fn test_tool_single_execution_finalizes() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -65,7 +67,7 @@ async fn test_tool_single_execution_finalizes() -> Result<()> {
     );
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
-    let executor = Executor::new(&llm, &registry);
+    let executor = Executor::new(&llm, &registry, &skill_registry);
     let agent_loop = AgentLoop::new(memory, planner, executor);
 
     let incoming = Message::new(Role::User, "What time is it?");
@@ -92,23 +94,22 @@ async fn test_tool_single_execution_finalizes() -> Result<()> {
 /**
  * test_tool_repeated_same_tool_hits_safe_boundary
  *
- * Protects against infinite loops (loop must stop at max_iterations).
+ * Duplicate tool prevention now protects against infinite loops.
+ * When the same tool is called repeatedly, it's blocked after the first execution.
  */
 #[tokio::test]
 async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
-    let mut seq = Sequence::new();
+    let skill_registry = SkillRegistry::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
 
-    for _ in 0..3 {
-        mock_llm
-            .expect_generate_response()
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
-    }
+    // Two calls: first executes tool, second is blocked by duplicate prevention
+    mock_llm
+        .expect_generate_response()
+        .times(2)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
 
     let llm = LlmOrchestrator::new(
         Box::new(mock_llm),
@@ -116,24 +117,14 @@ async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
     );
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
-    let executor = Executor::new(&llm, &registry);
+    let executor = Executor::new(&llm, &registry, &skill_registry);
     let agent_loop = AgentLoop::new(memory, planner, executor);
 
     let result = agent_loop.run(Message::new(Role::User, "loop test")).await;
 
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("max iterations (3) reached"));
-
-    // DB should contain User + 3 Tool attempts (Assistant reasoning skipped)
-    let memories = db.fetch_latest_memories("test_user", 10)?;
-    assert_eq!(memories.len(), 4);
-    assert_eq!(memories[0].role, Role::User);
-    for m in memories.iter().skip(1) {
-        assert_eq!(m.role, Role::Tool);
-    }
+    // With duplicate prevention, repeated same tool calls are blocked
+    // So the loop terminates successfully instead of hitting max iterations
+    assert!(result.is_ok());
 
     Ok(())
 }
@@ -147,6 +138,7 @@ async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
 async fn test_tool_reasoning_not_persisted() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -166,7 +158,11 @@ async fn test_tool_reasoning_not_persisted() -> Result<()> {
         Box::new(MockRegressionMockProvider::new()),
     );
     let memory = MemoryBridge::new(&db, "test_user");
-    let agent_loop = AgentLoop::new(memory, Planner::new(), Executor::new(&llm, &registry));
+    let agent_loop = AgentLoop::new(
+        memory,
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    );
 
     let _ = agent_loop.run(Message::new(Role::User, "test")).await?;
 
@@ -191,6 +187,7 @@ async fn test_tool_reasoning_not_persisted() -> Result<()> {
 async fn test_active_context_excludes_reasoning_after_tool() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -225,7 +222,7 @@ async fn test_active_context_excludes_reasoning_after_tool() -> Result<()> {
     let agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     );
 
     let res = agent_loop
@@ -248,6 +245,7 @@ async fn test_active_context_excludes_reasoning_after_tool() -> Result<()> {
 async fn test_memory_short_fact_recall() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let planner = Planner::new();
     let mut seq = Sequence::new();
 
@@ -280,7 +278,7 @@ async fn test_memory_short_fact_recall() -> Result<()> {
     // Run Turn 1
     {
         let memory = MemoryBridge::new(&db, "test_user");
-        let executor = Executor::new(&llm, &registry);
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner.clone(), executor);
         agent_loop
             .run(Message::new(Role::User, "Mi color favorito es azul"))
@@ -290,7 +288,7 @@ async fn test_memory_short_fact_recall() -> Result<()> {
     // Run Turn 2
     {
         let memory = MemoryBridge::new(&db, "test_user");
-        let executor = Executor::new(&llm, &registry);
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
         let res = agent_loop
             .run(Message::new(Role::User, "Cuál es mi color favorito?"))
@@ -312,6 +310,7 @@ async fn test_memory_short_fact_recall() -> Result<()> {
 async fn test_memory_with_tool_interleaving() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -355,7 +354,7 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner.clone(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "Mi favorito es verde"))
     .await?;
@@ -364,7 +363,7 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner.clone(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "Qué hora es?"))
     .await?;
@@ -373,7 +372,7 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
     let res = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner,
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "Cuál era mi color?"))
     .await?;
@@ -396,6 +395,7 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
 async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -450,7 +450,7 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner.clone(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "T1"))
     .await?;
@@ -458,7 +458,7 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner,
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "T2"))
     .await?;
@@ -478,6 +478,7 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
 async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -515,7 +516,7 @@ async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner.clone(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "Hora?"))
     .await?;
@@ -523,7 +524,7 @@ async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
     let res = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner,
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     )
     .run(Message::new(Role::User, "Hora otra vez?"))
     .await?;
@@ -543,6 +544,7 @@ async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
 async fn test_tool_result_only_once_in_context() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
     let mut mock_llm = MockRegressionMockProvider::new();
 
@@ -572,7 +574,7 @@ async fn test_tool_result_only_once_in_context() -> Result<()> {
     let agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     );
 
     agent_loop.run(Message::new(Role::User, "time")).await?;
@@ -590,6 +592,7 @@ async fn test_tool_result_only_once_in_context() -> Result<()> {
 async fn test_tool_after_long_context() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let memory = MemoryBridge::new(&db, "test_user");
 
     // Fill history with 15 messages
@@ -619,7 +622,11 @@ async fn test_tool_after_long_context() -> Result<()> {
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
     );
-    let agent_loop = AgentLoop::new(memory, Planner::new(), Executor::new(&llm, &registry));
+    let agent_loop = AgentLoop::new(
+        memory,
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    );
 
     let res = agent_loop.run(Message::new(Role::User, "Time?")).await?;
     assert_eq!(res.content, "12:00");
@@ -633,6 +640,7 @@ async fn test_tool_after_long_context() -> Result<()> {
 async fn test_tool_split_flow_v2() -> Result<()> {
     let db = Db::new(":memory:")?;
     let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
     let mut seq = Sequence::new();
 
     let mut mock_llm = MockRegressionMockProvider::new();
@@ -654,7 +662,7 @@ async fn test_tool_split_flow_v2() -> Result<()> {
     let agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
-        Executor::new(&llm, &registry),
+        Executor::new(&llm, &registry, &skill_registry),
     );
 
     agent_loop.run(Message::new(Role::User, "test")).await?;

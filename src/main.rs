@@ -4,6 +4,7 @@ use open_gravity::config::env::load_config;
 use open_gravity::db::sqlite::Db;
 use open_gravity::llm::{groq::GroqClient, openrouter::OpenRouterClient, LlmOrchestrator};
 use open_gravity::security::whitelist::Whitelist;
+use open_gravity::skills::registry::SkillRegistry;
 use open_gravity::tools::registry::Registry;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -55,12 +56,16 @@ async fn main() -> anyhow::Result<()> {
     // 6. Setup Tools Registry
     let registry = Arc::new(Registry::new());
 
-    // 7. Setup & Run Bot
+    // 7. Setup Skills Registry (auto-registers MemoryExtractionSkill)
+    let skill_registry = Arc::new(SkillRegistry::new());
+
+    // 8. Setup & Run Bot
     let dependencies = BotDependencies {
         db,
         llm: llm_orchestrator,
         registry,
         whitelist,
+        skill_registry,
     };
 
     let token = config.telegram_bot_token.expose_secret().to_string();

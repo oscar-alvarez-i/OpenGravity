@@ -7,6 +7,7 @@ use crate::db::sqlite::Db;
 use crate::domain::message::{Message as DomainMessage, Role};
 use crate::llm::LlmOrchestrator;
 use crate::security::whitelist::Whitelist;
+use crate::skills::registry::SkillRegistry;
 use crate::tools::registry::Registry;
 
 use anyhow::Result;
@@ -47,6 +48,7 @@ pub struct BotDependencies {
     pub llm: Arc<LlmOrchestrator>,
     pub registry: Arc<Registry>,
     pub whitelist: Arc<Whitelist>,
+    pub skill_registry: Arc<SkillRegistry>,
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -112,7 +114,7 @@ pub async fn handle_message(
 
     let memory = MemoryBridge::new(&deps.db, &user_id.to_string());
     let planner = Planner::new();
-    let executor = Executor::new(&deps.llm, &deps.registry);
+    let executor = Executor::new(&deps.llm, &deps.registry, &deps.skill_registry);
 
     let agent_loop = AgentLoop::new(memory, planner, executor);
 
@@ -197,6 +199,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("hello"), 2); // User 2 is unauthorized
@@ -221,6 +224,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(None, 1); // User 1, but no text
@@ -253,6 +257,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("test"), 1);
@@ -276,6 +281,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         // Create JSON message without "from"
@@ -336,6 +342,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("who are you?"), 1);
@@ -369,6 +376,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("help"), 1);
@@ -416,6 +424,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("what time is it?"), 1);
@@ -447,6 +456,7 @@ mod tests {
             llm,
             registry,
             whitelist,
+            skill_registry: Arc::new(SkillRegistry::new()),
         });
 
         let msg = create_test_message(Some("/start"), 1);

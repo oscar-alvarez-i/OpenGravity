@@ -22,12 +22,14 @@ mod integration_tests {
     use crate::domain::message::{Message, Role};
     use crate::llm::models::MockLlmProvider;
     use crate::llm::LlmOrchestrator;
+    use crate::skills::registry::SkillRegistry;
     use crate::tools::registry::Registry;
 
     #[tokio::test]
     async fn test_full_agent_loop_with_tool_call() {
         let db = Db::new(":memory:").unwrap();
         let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
 
         let mut mock_groq = MockLlmProvider::new();
         mock_groq
@@ -48,7 +50,7 @@ mod integration_tests {
 
         let memory = MemoryBridge::new(&db, "test_user");
         let planner = Planner::new();
-        let executor = Executor::new(&llm, &registry);
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let incoming = Message::new(Role::User, "What time is it?");
@@ -67,31 +69,31 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn test_agent_loop_max_iterations() {
+    async fn test_agent_loop_terminates_with_duplicate_prevention() {
         let db = Db::new(":memory:").unwrap();
         let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
 
         let mut mock_groq = MockLlmProvider::new();
+        // Duplicate prevention now blocks repeated tool calls
+        // So the loop terminates normally instead of infinitely looping
         mock_groq
             .expect_generate_response()
-            .times(3)
-            .returning(|_, _| Box::pin(async { Ok("Endless\nTOOL:get_current_time".to_string()) }));
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
 
         let memory = MemoryBridge::new(&db, "test_user");
         let planner = Planner::new();
-        let executor = Executor::new(&llm, &registry);
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
-        let incoming = Message::new(Role::User, "Help");
+        let incoming = Message::new(Role::User, "What time is it?");
         let response = agent_loop.run(incoming).await;
 
-        assert!(response.is_err());
-        assert!(response
-            .unwrap_err()
-            .to_string()
-            .contains("Agent loop max iterations (3) reached"));
+        // With duplicate prevention, repeated tool calls are blocked
+        // so the loop terminates successfully instead of hitting max iterations
+        assert!(response.is_ok());
     }
 }

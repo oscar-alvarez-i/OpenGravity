@@ -95,13 +95,13 @@ mod tests {
     use crate::db::sqlite::Db;
     use crate::llm::models::MockLlmProvider;
     use crate::llm::LlmOrchestrator;
+    use crate::skills::registry::SkillRegistry;
     use crate::tools::registry::Registry;
     use std::sync::Arc;
 
     #[tokio::test]
     async fn test_agent_loop_fetch_context_error() {
         let db = Db::new(":memory:").unwrap();
-        // Break the DB explicitly by dropping the table it needs
         db.execute_raw("DROP TABLE memories").unwrap();
 
         let memory = MemoryBridge::new(&db, "user");
@@ -110,7 +110,8 @@ mod tests {
         let or = Box::new(MockLlmProvider::new());
         let llm = LlmOrchestrator::new(groq, or);
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
@@ -136,7 +137,8 @@ mod tests {
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
@@ -163,7 +165,8 @@ mod tests {
         let or = Box::new(MockLlmProvider::new());
         let llm = LlmOrchestrator::new(groq, or);
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
@@ -195,7 +198,8 @@ mod tests {
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         // This should NOT fail the loop because intermediate save failure is non-fatal
@@ -213,15 +217,25 @@ mod tests {
         let planner = Planner::new();
 
         let mut groq = MockLlmProvider::new();
-        // Return TOOL call 4 times (max is 3) or until loop stops
+        // Use different tools each time to avoid duplicate prevention
+        // Return 4 tool calls (max is 3) - will stop at 3
         groq.expect_generate_response()
             .times(3)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+            .returning(|_, messages| {
+                let len = messages.len();
+                let tool = match len % 3 {
+                    0 => "TOOL:get_current_time",
+                    1 => "TOOL:get_weather",
+                    _ => "TOOL:get_date",
+                };
+                Box::pin(async { Ok(tool.to_string()) })
+            });
 
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
@@ -253,7 +267,8 @@ mod tests {
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
         let registry = Registry::new();
-        let executor = Executor::new(&llm, &registry);
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
         let agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
