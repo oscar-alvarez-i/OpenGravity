@@ -1,5 +1,6 @@
 use crate::domain::message::{Message, Role};
 use crate::llm::LlmOrchestrator;
+use crate::skills::planner::{Plan, PlanStep, Planner as SkillPlanner};
 use crate::skills::registry::SkillRegistry;
 use crate::tools::registry::Registry;
 use anyhow::Result;
@@ -9,6 +10,8 @@ pub struct Executor<'a> {
     llm: &'a LlmOrchestrator,
     registry: &'a Registry,
     skill_registry: &'a SkillRegistry,
+    planner: SkillPlanner,
+    pending_plan: Option<Plan>,
 }
 
 impl<'a> Executor<'a> {
@@ -21,15 +24,81 @@ impl<'a> Executor<'a> {
             llm,
             registry,
             skill_registry,
+            planner: SkillPlanner::new(),
+            pending_plan: None,
         }
     }
 
+    pub fn has_pending_plan(&self) -> bool {
+        self.pending_plan.is_some()
+    }
+
+    pub fn take_pending_plan(&mut self) -> Option<Plan> {
+        self.pending_plan.take()
+    }
+
+    fn set_pending_plan(&mut self, plan: Plan) {
+        let remaining: Vec<PlanStep> = plan.remaining_steps();
+        let remaining_len = remaining.len();
+        if !remaining.is_empty() {
+            self.pending_plan = Some(Plan { steps: remaining });
+            debug!("Pending plan set with {} remaining steps", remaining_len);
+        } else {
+            self.pending_plan = None;
+        }
+    }
+
+    fn clear_pending_plan(&mut self) {
+        self.pending_plan = None;
+        debug!("Pending plan cleared");
+    }
+
     /// Evaluates messages, queries LLM, and returns a list of messages (Assistant, Tool) and a continuation flag
+    /// Priority: skill > pending_plan > planner > llm > tool handling
     pub async fn execute_step(
-        &self,
+        &mut self,
         system_prompt: &str,
         messages: &[Message],
     ) -> Result<(Vec<Message>, bool)> {
+        // 1. CHECK PENDING PLAN FIRST (before LLM)
+        // Critical: prevents re-planning on same user message
+        if let Some(plan) = self.pending_plan.take() {
+            if let Some(first_step) = plan.first_step() {
+                info!("Executing pending plan step: {:?}", first_step);
+
+                match first_step {
+                    PlanStep::Tool(tool_name) => {
+                        let tool_call = crate::domain::tool::ToolCall {
+                            name: tool_name.clone(),
+                            input: String::new(),
+                        };
+
+                        let tool_res = self.registry.execute_tool(&tool_call);
+                        let tool_output_text = match tool_res.output {
+                            Ok(data) => format!(
+                                "Tool result available: {}. Use this result to answer the user directly.",
+                                data
+                            ),
+                            Err(err) => format!("Tool execution error: {}", err),
+                        };
+
+                        // Set remaining steps as pending
+                        self.set_pending_plan(plan);
+
+                        return Ok((vec![Message::new(Role::Tool, tool_output_text)], true));
+                    }
+                    PlanStep::Direct(content) => {
+                        let normalized = self.planner.normalize_direct_step(content);
+
+                        // Set remaining steps as pending
+                        self.set_pending_plan(plan);
+
+                        return Ok((vec![Message::new(Role::Assistant, normalized)], true));
+                    }
+                }
+            }
+        }
+
         debug!("Executing LLM step message context:");
         debug!("  Context [0] System: {}", system_prompt);
         for (i, msg) in messages.iter().enumerate() {
@@ -48,16 +117,13 @@ impl<'a> Executor<'a> {
             // DUPLICATE TOOL PREVENTION: Check if same tool was already executed in latest turn
             if let Some(last_msg) = messages.last() {
                 if last_msg.role == Role::Tool {
-                    // Check if this tool was already called in the last turn
                     let last_tool_content = &last_msg.content;
                     if last_tool_content.contains("Tool result available:") {
-                        // Same tool was already executed - strip TOOL line and return assistant answer only
                         debug!(
                             "Tool '{}' already executed in previous turn - blocking duplicate",
                             tool_call.name
                         );
 
-                        // Extract assistant content and return as final answer (no tool re-execution)
                         let assistant_content = response_text
                             .lines()
                             .filter(|line| !line.trim_start().starts_with("TOOL:"))
@@ -122,7 +188,7 @@ impl<'a> Executor<'a> {
         }
 
         // SKILL GATE: Only execute skill if no tool was called
-        // Priority: tool > skill > direct answer
+        // Priority: skill > pending_plan > planner > direct answer
         if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
             if let Some(skill) = self
                 .skill_registry
@@ -131,7 +197,6 @@ impl<'a> Executor<'a> {
                 info!("Skill '{}' triggered for message", skill.name());
                 let skill_result = skill.execute(messages, user_msg).await?;
 
-                // Process memory updates - log for now (future: store in DB)
                 for update in &skill_result.memory_updates {
                     info!(
                         "Memory update: key='{}', value='{}', op={:?}",
@@ -139,17 +204,54 @@ impl<'a> Executor<'a> {
                     );
                 }
 
-                // If skill produced content, use that as the response and stop
                 if let Some(content) = skill_result.content {
                     return Ok((vec![Message::new(Role::Assistant, content)], false));
                 }
-
-                // Skill ran silently (memory updates) - allow LLM to continue normally
-                // Don't add extra messages, just let the normal flow continue
             }
         }
 
-        // Return Assistant regular response and False for `should_continue`
+        // PLANNER GATE: Check for multi-step intent only if no pending_plan
+        // Priority: skill > pending_plan > planner > llm > direct answer
+        if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
+            if let Some(plan) = self.planner.create_plan(&user_msg.content) {
+                if let Some(first_step) = plan.first_step() {
+                    info!("Planner executing first step: {:?}", first_step);
+
+                    match first_step {
+                        PlanStep::Tool(tool_name) => {
+                            let tool_call = crate::domain::tool::ToolCall {
+                                name: tool_name.clone(),
+                                input: String::new(),
+                            };
+
+                            let tool_res = self.registry.execute_tool(&tool_call);
+                            let tool_output_text = match tool_res.output {
+                                Ok(data) => format!(
+                                    "Tool result available: {}. Use this result to answer the user directly.",
+                                    data
+                                ),
+                                Err(err) => format!("Tool execution error: {}", err),
+                            };
+
+                            // Set remaining steps as pending (creates pending_plan)
+                            self.set_pending_plan(plan);
+
+                            return Ok((vec![Message::new(Role::Tool, tool_output_text)], true));
+                        }
+                        PlanStep::Direct(content) => {
+                            let normalized = self.planner.normalize_direct_step(content);
+
+                            // Set remaining steps as pending
+                            self.set_pending_plan(plan);
+
+                            return Ok((vec![Message::new(Role::Assistant, normalized)], true));
+                        }
+                    }
+                }
+            }
+        }
+
+        // No pending plan, no tool, no skill, no planner - return LLM response
         Ok((vec![Message::new(Role::Assistant, response_text)], false))
     }
 }
@@ -174,7 +276,7 @@ mod tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let (msgs, should_continue) = executor.execute_step("sys", &[]).await.unwrap();
 
@@ -201,7 +303,7 @@ mod tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let (msgs, should_continue) = executor.execute_step("sys", &[]).await.unwrap();
 
@@ -226,7 +328,7 @@ mod tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         // We also pass a dummy message to cover the debug context logging at the start of execute_step
         let messages = vec![Message::new(Role::User, "trigger debug log")];
@@ -249,7 +351,7 @@ mod tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         // Simulate that get_current_time was already executed in previous turn
         let messages = vec![

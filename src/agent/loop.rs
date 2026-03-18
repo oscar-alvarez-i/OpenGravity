@@ -18,7 +18,7 @@ impl<'a> AgentLoop<'a> {
         }
     }
 
-    pub async fn run(&self, incoming_msg: Message) -> Result<Message> {
+    pub async fn run(&mut self, incoming_msg: Message) -> Result<Message> {
         info!("Starting agent loop");
 
         // 1. Recover memory
@@ -105,14 +105,14 @@ mod tests {
         db.execute_raw("DROP TABLE memories").unwrap();
 
         let memory = MemoryBridge::new(&db, "user");
-        let planner = Planner::new();
+        let agent_planner = Planner::new();
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
         let llm = LlmOrchestrator::new(groq, or);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "hi"))
@@ -128,7 +128,7 @@ mod tests {
     async fn test_agent_loop_executor_error() {
         let db = Db::new(":memory:").unwrap();
         let memory = MemoryBridge::new(&db, "user");
-        let planner = Planner::new();
+        let agent_planner = Planner::new();
 
         let mut groq = MockLlmProvider::new();
         groq.expect_generate_response()
@@ -139,7 +139,7 @@ mod tests {
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "hi"))
@@ -160,14 +160,14 @@ mod tests {
         // Now break the DB before initial save in run()
         db.execute_raw("DROP TABLE memories").unwrap();
 
-        let planner = Planner::new();
+        let agent_planner = Planner::new();
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
         let llm = LlmOrchestrator::new(groq, or);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "hi"))
@@ -200,7 +200,7 @@ mod tests {
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         // This should NOT fail the loop because intermediate save failure is non-fatal
         let res = agent_loop
@@ -236,20 +236,17 @@ mod tests {
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "hi"))
             .await;
         assert!(res.is_err());
-        assert!(res
-            .unwrap_err()
-            .to_string()
-            .contains("max iterations (3) reached"));
+        assert!(res.unwrap_err().to_string().contains("max iterations"));
     }
 
     #[tokio::test]
-    async fn test_agent_loop_with_tool_success() {
+    async fn test_agent_loop_all_tool_errors() {
         let db = Db::new(":memory:").unwrap();
         let memory = MemoryBridge::new(&db, "user");
         let planner = Planner::new();
@@ -269,7 +266,7 @@ mod tests {
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "hi"))

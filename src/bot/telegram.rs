@@ -113,10 +113,10 @@ pub async fn handle_message(
     let incoming_msg = DomainMessage::new(Role::User, text);
 
     let memory = MemoryBridge::new(&deps.db, &user_id.to_string());
-    let planner = Planner::new();
+    let agent_planner = Planner::new();
     let executor = Executor::new(&deps.llm, &deps.registry, &deps.skill_registry);
 
-    let agent_loop = AgentLoop::new(memory, planner, executor);
+    let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
     match agent_loop.run(incoming_msg).await {
         Ok(response) => {

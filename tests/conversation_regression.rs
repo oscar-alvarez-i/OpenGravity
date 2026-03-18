@@ -13,6 +13,7 @@ use open_gravity::db::sqlite::Db;
 use open_gravity::domain::message::{Message, Role};
 use open_gravity::llm::models::LlmProvider;
 use open_gravity::llm::LlmOrchestrator;
+use open_gravity::skills::planner::Planner as SkillPlanner;
 use open_gravity::skills::registry::SkillRegistry;
 use open_gravity::tools::registry::Registry;
 
@@ -68,7 +69,7 @@ async fn test_tool_single_execution_finalizes() -> Result<()> {
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
     let executor = Executor::new(&llm, &registry, &skill_registry);
-    let agent_loop = AgentLoop::new(memory, planner, executor);
+    let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
     let incoming = Message::new(Role::User, "What time is it?");
     let _ = agent_loop.run(incoming).await?;
@@ -118,7 +119,7 @@ async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
     let executor = Executor::new(&llm, &registry, &skill_registry);
-    let agent_loop = AgentLoop::new(memory, planner, executor);
+    let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
     let result = agent_loop.run(Message::new(Role::User, "loop test")).await;
 
@@ -158,7 +159,7 @@ async fn test_tool_reasoning_not_persisted() -> Result<()> {
         Box::new(MockRegressionMockProvider::new()),
     );
     let memory = MemoryBridge::new(&db, "test_user");
-    let agent_loop = AgentLoop::new(
+    let mut agent_loop = AgentLoop::new(
         memory,
         Planner::new(),
         Executor::new(&llm, &registry, &skill_registry),
@@ -219,7 +220,7 @@ async fn test_active_context_excludes_reasoning_after_tool() -> Result<()> {
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
     );
-    let agent_loop = AgentLoop::new(
+    let mut agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
         Executor::new(&llm, &registry, &skill_registry),
@@ -279,7 +280,7 @@ async fn test_memory_short_fact_recall() -> Result<()> {
     {
         let memory = MemoryBridge::new(&db, "test_user");
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner.clone(), executor);
+        let mut agent_loop = AgentLoop::new(memory, planner.clone(), executor);
         agent_loop
             .run(Message::new(Role::User, "Mi color favorito es azul"))
             .await?;
@@ -289,7 +290,7 @@ async fn test_memory_short_fact_recall() -> Result<()> {
     {
         let memory = MemoryBridge::new(&db, "test_user");
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
         let res = agent_loop
             .run(Message::new(Role::User, "Cuál es mi color favorito?"))
             .await?;
@@ -351,31 +352,38 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
     let planner = Planner::new();
 
     // Turn 1
-    AgentLoop::new(
-        MemoryBridge::new(&db, "u"),
-        planner.clone(),
-        Executor::new(&llm, &registry, &skill_registry),
-    )
-    .run(Message::new(Role::User, "Mi favorito es verde"))
-    .await?;
+    {
+        let mut agent_loop = AgentLoop::new(
+            MemoryBridge::new(&db, "u"),
+            planner.clone(),
+            Executor::new(&llm, &registry, &skill_registry),
+        );
+        agent_loop
+            .run(Message::new(Role::User, "Mi favorito es verde"))
+            .await?;
+    }
 
     // Turn 2
-    AgentLoop::new(
-        MemoryBridge::new(&db, "u"),
-        planner.clone(),
-        Executor::new(&llm, &registry, &skill_registry),
-    )
-    .run(Message::new(Role::User, "Qué hora es?"))
-    .await?;
+    {
+        let mut agent_loop = AgentLoop::new(
+            MemoryBridge::new(&db, "u"),
+            planner.clone(),
+            Executor::new(&llm, &registry, &skill_registry),
+        );
+        agent_loop
+            .run(Message::new(Role::User, "Qué hora es?"))
+            .await?;
+    }
 
     // Turn 3
-    let res = AgentLoop::new(
+    let mut agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         planner,
         Executor::new(&llm, &registry, &skill_registry),
-    )
-    .run(Message::new(Role::User, "Cuál era mi color?"))
-    .await?;
+    );
+    let res = agent_loop
+        .run(Message::new(Role::User, "Cuál era mi color?"))
+        .await?;
 
     assert!(res.content.contains("verde"));
 
@@ -446,6 +454,7 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
         Box::new(MockRegressionMockProvider::new()),
     );
     let planner = Planner::new();
+    let skill_planner = SkillPlanner::new();
 
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -512,6 +521,7 @@ async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
         Box::new(MockRegressionMockProvider::new()),
     );
     let planner = Planner::new();
+    let skill_planner = SkillPlanner::new();
 
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -571,6 +581,7 @@ async fn test_tool_result_only_once_in_context() -> Result<()> {
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
     );
+    let skill_planner = SkillPlanner::new();
     let agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
@@ -622,6 +633,7 @@ async fn test_tool_after_long_context() -> Result<()> {
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
     );
+    let skill_planner = SkillPlanner::new();
     let agent_loop = AgentLoop::new(
         memory,
         Planner::new(),
@@ -659,6 +671,7 @@ async fn test_tool_split_flow_v2() -> Result<()> {
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
     );
+    let skill_planner = SkillPlanner::new();
     let agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),

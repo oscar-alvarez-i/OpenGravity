@@ -49,9 +49,9 @@ mod integration_tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
 
         let memory = MemoryBridge::new(&db, "test_user");
-        let planner = Planner::new();
+        let agent_planner = Planner::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
         let incoming = Message::new(Role::User, "What time is it?");
         let response = agent_loop.run(incoming).await.unwrap();
@@ -85,9 +85,9 @@ mod integration_tests {
         let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
 
         let memory = MemoryBridge::new(&db, "test_user");
-        let planner = Planner::new();
+        let agent_planner = Planner::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
-        let agent_loop = AgentLoop::new(memory, planner, executor);
+        let mut agent_loop = AgentLoop::new(memory, agent_planner, executor);
 
         let incoming = Message::new(Role::User, "What time is it?");
         let response = agent_loop.run(incoming).await;
