@@ -30,6 +30,42 @@ impl Planner {
         messages.push(latest_user_msg.clone());
         messages
     }
+
+    pub fn filter_tool_duplicates(&self, messages: &[Message]) -> Vec<Message> {
+        use std::collections::HashMap;
+        let mut last_tool_idx: HashMap<String, usize> = HashMap::new();
+
+        for (i, msg) in messages.iter().enumerate().rev() {
+            if msg.role == crate::domain::message::Role::Tool {
+                if let Some(tool_name) = self.extract_tool_name_from_result(&msg.content) {
+                    last_tool_idx.entry(tool_name).or_insert(i);
+                }
+            }
+        }
+
+        let keep_indices: std::collections::HashSet<usize> = last_tool_idx.into_values().collect();
+
+        messages
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep_indices.contains(i))
+            .map(|(_, m)| m.clone())
+            .collect()
+    }
+
+    fn extract_tool_name_from_result(&self, content: &str) -> Option<String> {
+        if content.contains("get_current_time") {
+            Some("get_current_time".to_string())
+        } else if content.contains("get_weather") {
+            Some("get_weather".to_string())
+        } else if content.contains("get_date") {
+            Some("get_date".to_string())
+        } else if content.contains("Tool result available:") {
+            Some("unknown".to_string())
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]

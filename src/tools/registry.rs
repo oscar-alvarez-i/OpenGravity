@@ -1,11 +1,33 @@
-use crate::domain::tool::{ToolCall, ToolResult};
+use crate::domain::tool::{FreshnessPolicy, ToolCall, ToolResult};
+use std::collections::HashMap;
 
-pub struct Registry;
+pub struct Registry {
+    tools: HashMap<String, ToolDefinition>,
+}
+
+#[derive(Clone)]
+struct ToolDefinition {
+    freshness: FreshnessPolicy,
+}
 
 impl Registry {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self
+        let mut tools = HashMap::new();
+        tools.insert(
+            "get_current_time".to_string(),
+            ToolDefinition {
+                freshness: FreshnessPolicy::AlwaysFresh,
+            },
+        );
+        Self { tools }
+    }
+
+    pub fn freshness_policy(&self, tool_name: &str) -> FreshnessPolicy {
+        self.tools
+            .get(tool_name)
+            .map(|t| t.freshness)
+            .unwrap_or_default()
     }
 
     /// Parses the LLM textual response to find `TOOL:tool_name`.

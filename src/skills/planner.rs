@@ -121,15 +121,40 @@ impl Planner {
             result = result.replace(connector, "");
         }
 
-        // Clean up extra whitespace
         let result = result.split_whitespace().collect::<Vec<_>>().join(" ");
 
-        // Capitalize first letter for better presentation
         let mut chars = result.chars();
         match chars.next() {
             None => String::new(),
             Some(first) => first.to_uppercase().chain(chars).collect(),
         }
+    }
+
+    pub fn split_message(&self, message: &str) -> Option<(String, String)> {
+        if !self.has_multi_step_intent(message) {
+            return None;
+        }
+
+        let message_lower = message.to_lowercase();
+
+        for connector in MULTI_STEP_CONNECTORS {
+            if message_lower.contains(connector) {
+                let parts: Vec<&str> = message.splitn(2, connector).collect();
+                if parts.len() == 2 {
+                    let factual = parts[0].trim().to_string();
+                    let remaining = parts[1].trim().to_string();
+                    if !factual.is_empty() && !remaining.is_empty() {
+                        debug!(
+                            "Split message: factual='{}', remaining='{}'",
+                            factual, remaining
+                        );
+                        return Some((factual, remaining));
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -266,5 +291,22 @@ mod tests {
         let plan = result.unwrap();
         let remaining = plan.remaining_steps();
         assert!(remaining.len() <= 1);
+    }
+
+    #[test]
+    fn test_split_message_factual_and_remaining() {
+        let planner = Planner::new();
+        let result = planner.split_message("Mi color favorito es verde y después decime la hora");
+        assert!(result.is_some());
+        let (factual, remaining) = result.unwrap();
+        assert_eq!(factual, "Mi color favorito es verde");
+        assert_eq!(remaining, "decime la hora");
+    }
+
+    #[test]
+    fn test_split_message_no_multi_step() {
+        let planner = Planner::new();
+        let result = planner.split_message("Dime la hora");
+        assert!(result.is_none());
     }
 }

@@ -19,33 +19,29 @@ struct FactPattern {
 }
 
 impl FactPattern {
-    fn matches(&self, text: &str) -> Option<String> {
+    fn matches(&self, text: &str) -> Option<usize> {
         let text_lower = text.to_lowercase();
         for pattern in &self.patterns {
-            if text_lower.contains(pattern) {
-                return Some(pattern.to_string());
+            if let Some(pos) = text_lower.find(pattern) {
+                return Some(pos);
             }
         }
         None
     }
 
-    fn extract_value(&self, text: &str) -> Option<String> {
+    fn extract_value(&self, text: &str, pattern_pos: usize) -> Option<String> {
         let text_lower = text.to_lowercase();
 
-        // Try each value pattern to extract the actual value
         for vp in &self.value_patterns {
-            if let Some(pos) = text_lower.find(vp) {
-                // Get everything after the pattern
-                let after = &text[pos + vp.len()..];
-                // Clean up: trim, take first word/phrase
+            if let Some(vp_pos) = text_lower[pattern_pos..].find(vp) {
+                let actual_pos = pattern_pos + vp_pos;
+                let after = &text[actual_pos + vp.len()..];
                 let value = after.trim();
-                // Handle quoted values
                 if value.starts_with('"') || value.starts_with('\'') {
                     if let Some(end_quote) = value[1..].find(&value[0..1]) {
                         return Some(value[1..=end_quote].to_string());
                     }
                 }
-                // Take first word (simple value like "azul", "Python")
                 if let Some(first_word) = value.split_whitespace().next() {
                     if !first_word.is_empty() {
                         return Some(first_word.to_string());
@@ -54,8 +50,7 @@ impl FactPattern {
             }
         }
 
-        // Fallback: extract last word of the sentence as value
-        Some(text.split_whitespace().last().unwrap_or("").to_string())
+        None
     }
 }
 
@@ -123,13 +118,11 @@ impl MemoryExtractionSkill {
 
     fn extract_fact(&self, text: &str) -> Option<(String, String)> {
         for pattern in &self.stable_fact_patterns {
-            if pattern.matches(text).is_some() {
-                let key = pattern.key.to_string();
-                // Extract normalized value instead of full sentence
-                let value = pattern
-                    .extract_value(text)
-                    .unwrap_or_else(|| text.to_string());
-                return Some((key, value));
+            if let Some(pattern_pos) = pattern.matches(text) {
+                if let Some(value) = pattern.extract_value(text, pattern_pos) {
+                    let key = pattern.key.to_string();
+                    return Some((key, value));
+                }
             }
         }
         None
@@ -165,9 +158,19 @@ impl MemoryExtractionSkill {
         false
     }
 
-    fn find_existing_fact(&self, key: &str, context: &[Message]) -> Option<String> {
+    fn find_existing_fact(
+        &self,
+        key: &str,
+        context: &[Message],
+        current_text: &str,
+    ) -> Option<String> {
+        let current_lower = current_text.to_lowercase();
         for msg in context {
             if msg.role == crate::domain::message::Role::User {
+                let msg_lower = msg.content.to_lowercase();
+                if msg_lower.starts_with(&current_lower) && msg_lower != current_lower {
+                    continue;
+                }
                 if let Some((fact_key, fact_value)) = self.extract_fact(&msg.content) {
                     if fact_key == key {
                         return Some(fact_value);
@@ -178,8 +181,14 @@ impl MemoryExtractionSkill {
         None
     }
 
-    fn is_fact_update(&self, key: &str, new_value: &str, context: &[Message]) -> bool {
-        if let Some(existing) = self.find_existing_fact(key, context) {
+    fn is_fact_update(
+        &self,
+        key: &str,
+        new_value: &str,
+        context: &[Message],
+        current_text: &str,
+    ) -> bool {
+        if let Some(existing) = self.find_existing_fact(key, context, current_text) {
             if existing.to_lowercase() != new_value.to_lowercase() {
                 debug!(
                     "Fact '{}' update detected: '{}' -> '{}'",
@@ -230,7 +239,7 @@ impl Skill for MemoryExtractionSkill {
             debug!("Extracted stable fact: key={}, value={}", key, value);
 
             // Check for update vs duplicate using normalized values
-            if self.is_fact_update(&key, &value, context) {
+            if self.is_fact_update(&key, &value, context, text) {
                 info!("Updating existing fact: {}", key);
                 return Ok(
                     SkillOutput::done_no_output().with_memory_updates(vec![MemoryUpdate {
@@ -243,7 +252,7 @@ impl Skill for MemoryExtractionSkill {
 
             // Check if this exact fact already exists (no duplicate) using normalized values
             if self
-                .find_existing_fact(&key, context)
+                .find_existing_fact(&key, context, text)
                 .map(|existing| existing.to_lowercase() == value.to_lowercase())
                 .unwrap_or(false)
             {
@@ -446,5 +455,26 @@ mod tests {
         assert_eq!(result.memory_updates[0].fact_key, "favorite_color");
         assert_eq!(result.memory_updates[0].fact_value, "azul");
         assert_eq!(result.memory_updates[0].operation, MemoryOperation::Set);
+    }
+
+    #[tokio::test]
+    async fn test_fact_fragment_with_full_message_in_context() {
+        let skill = MemoryExtractionSkill::new();
+        let context = create_context(vec![(
+            "Mi color favorito es verde y después decime la hora",
+            Role::User,
+        )]);
+        let user_msg = Message::new(Role::User, "Mi color favorito es verde");
+
+        let result = skill.execute(&context, &user_msg).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(
+            result.memory_updates.len(),
+            1,
+            "Should extract fact from fragment, not find duplicate"
+        );
+        assert_eq!(result.memory_updates[0].fact_key, "favorite_color");
+        assert_eq!(result.memory_updates[0].fact_value, "verde");
     }
 }
