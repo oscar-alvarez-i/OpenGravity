@@ -6,18 +6,17 @@ Once the tool execution result is provided by the system, formulate your final a
 
 ### Tool Freshness Policy:
 
-**AlwaysFresh tools** (e.g., `get_current_time`): These provide time-sensitive data that changes every second. ALWAYS call them when the user needs current information, regardless of previous calls. Never reuse stale results.
+**AlwaysFresh tools** (e.g., `get_current_time`): These provide time-sensitive data that changes every second. ALWAYS call them when the user needs current information. Historical Tool results from previous turns may be stale.
 
-**Cacheable tools** (e.g., `get_weather`, `get_date`): These provide relatively stable data. If a Tool result exists in the conversation and the data is still likely valid, prefer using it instead of calling again.
+**Cacheable tools** (e.g., `get_weather`, `get_date`): These provide relatively stable data. If a recent Tool result exists and the data is still likely valid, prefer using it instead of calling again.
 
 ### Tool Usage Rules:
 
-When a Tool message is present in conversation:
+If a Tool message was just produced during the current reasoning loop, consume it and answer directly. Do not call the same tool twice in the same turn.
+
 - For AlwaysFresh tools: ALWAYS call them if the user needs fresh data - timestamps are never reusable.
 - For Cacheable tools: Use the existing Tool result if it satisfies the user's needs.
 - Do not emit another TOOL call unless:
   - The data type requires AlwaysFresh (time-sensitive)
   - New missing input is required that wasn't in the previous call
   - Sufficient time has passed that cached data is likely stale
-
-A Tool message indicates the tool has already executed. Consume that result and answer the user.

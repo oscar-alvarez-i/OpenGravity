@@ -31,10 +31,18 @@ impl Registry {
     }
 
     /// Parses the LLM textual response to find `TOOL:tool_name`.
-    /// Currently only parsing first tool for simplicity, without JSON structured extraction.
+    /// ONLY accepts TOOL if it's on the last non-empty line.
     pub fn parse_tool_call(&self, response: &str) -> Option<ToolCall> {
-        for line in response.lines() {
-            let trimmed = line.trim_start();
+        let lines: Vec<&str> = response.lines().collect();
+        if lines.is_empty() {
+            return None;
+        }
+
+        for line in lines.into_iter().rev() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
             if let Some(stripped) = trimmed.strip_prefix("TOOL:") {
                 let tool_name = stripped.trim().to_string();
                 if !tool_name.is_empty() {
@@ -44,6 +52,7 @@ impl Registry {
                     });
                 }
             }
+            break;
         }
         None
     }
@@ -72,6 +81,22 @@ mod tests {
         let res = registry.parse_tool_call("I need the time.\nTOOL:get_current_time");
         assert!(res.is_some());
         assert_eq!(res.unwrap().name, "get_current_time");
+    }
+
+    #[test]
+    fn test_parse_tool_only_last_line() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("Texto previo\nTOOL:get_current_time");
+        assert!(res.is_some());
+
+        let res_invalid = registry.parse_tool_call("TOOL:get_current_time\nTexto después");
+        assert!(
+            res_invalid.is_none(),
+            "TOOL not on last line should be rejected"
+        );
+
+        let res_no_tool = registry.parse_tool_call("Solo texto sin tool");
+        assert!(res_no_tool.is_none());
     }
 
     #[test]

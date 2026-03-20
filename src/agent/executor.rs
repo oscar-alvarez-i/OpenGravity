@@ -181,20 +181,20 @@ impl<'a> Executor<'a> {
                             );
                         }
 
-                        if let Some(content) = skill_result.content {
-                            return Ok(StepResult::new(
-                                vec![Message::new(Role::Assistant, content)],
-                                false,
-                            ));
-                        }
+                        let mut step_result = if let Some(content) = skill_result.content {
+                            StepResult::new(vec![Message::new(Role::Assistant, content)], false)
+                        } else {
+                            StepResult::new(Vec::new(), true)
+                        };
 
                         if !skill_result.memory_updates.is_empty() {
+                            step_result.memory_updates = skill_result.memory_updates;
                             if let Some(plan) = self.planner.create_plan(content) {
                                 self.set_pending_plan(plan);
                             }
-                            return Ok(StepResult::new(vec![], true)
-                                .with_memory_updates(skill_result.memory_updates));
                         }
+
+                        return Ok(step_result);
                     }
                 }
 
@@ -212,15 +212,19 @@ impl<'a> Executor<'a> {
                         );
                     }
 
+                    let has_memory_updates = !skill_result.memory_updates.is_empty();
+
                     if let Some(content) = skill_result.content {
-                        return Ok(StepResult::new(
-                            vec![Message::new(Role::Assistant, content)],
-                            false,
-                        ));
+                        let mut step_result =
+                            StepResult::new(vec![Message::new(Role::Assistant, content)], false);
+                        if has_memory_updates {
+                            step_result.memory_updates = skill_result.memory_updates;
+                        }
+                        return Ok(step_result);
                     }
 
-                    if !skill_result.memory_updates.is_empty() {
-                        return Ok(StepResult::new(vec![], false)
+                    if has_memory_updates {
+                        return Ok(StepResult::new(vec![], true)
                             .with_memory_updates(skill_result.memory_updates));
                     }
                 }
@@ -370,9 +374,7 @@ mod tests {
             .expect_generate_response()
             .times(1)
             .returning(|_, _| {
-                Box::pin(async {
-                    Ok("I am thinking.\nTOOL:get_current_time\nSome extra stuff".to_string())
-                })
+                Box::pin(async { Ok("I am thinking.\nTOOL:get_current_time".to_string()) })
             });
 
         let mock_or = MockLlmProvider::new();
@@ -396,7 +398,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_executor_trailing_content_warning() {
+    async fn test_executor_trailing_content_rejected() {
         let mut mock_groq = MockLlmProvider::new();
         mock_groq.expect_generate_response().returning(|_, _| {
             Box::pin(async {
@@ -413,11 +415,16 @@ mod tests {
         let messages = vec![Message::new(Role::User, "trigger debug log")];
         let result = executor.execute_step("sys", &messages).await.unwrap();
 
+        assert!(
+            !result.should_continue,
+            "Trailing content after TOOL rejects the tool call"
+        );
         assert_eq!(
             result.messages.len(),
             1,
-            "Only Tool result returned, reasoning dropped"
+            "Full response treated as Assistant message when TOOL has trailing content"
         );
+        assert_eq!(result.messages[0].role, Role::Assistant);
     }
 
     #[tokio::test]
@@ -465,11 +472,13 @@ mod tests {
         let messages = vec![Message::new(Role::User, "Mi color favorito es azul")];
 
         let result = executor.execute_step("sys", &messages).await.unwrap();
-        let msgs = result.messages;
 
-        assert!(!result.should_continue);
-        assert!(!msgs.is_empty());
-        assert_eq!(msgs[0].role, Role::Assistant);
+        assert!(result.should_continue, "Memory skill continues to LLM");
+        assert!(
+            result.messages.is_empty(),
+            "No assistant message from memory skill"
+        );
+        assert!(!result.memory_updates.is_empty(), "Memory should be saved");
         assert!(!executor.has_pending_plan());
     }
 

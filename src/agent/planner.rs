@@ -43,12 +43,19 @@ impl Planner {
             }
         }
 
-        let keep_indices: std::collections::HashSet<usize> = last_tool_idx.into_values().collect();
+        let tool_indices_to_keep: std::collections::HashSet<usize> =
+            last_tool_idx.into_values().collect();
 
         messages
             .iter()
             .enumerate()
-            .filter(|(i, _)| keep_indices.contains(i))
+            .filter(|(i, msg)| {
+                if msg.role != crate::domain::message::Role::Tool {
+                    true
+                } else {
+                    tool_indices_to_keep.contains(i)
+                }
+            })
             .map(|(_, m)| m.clone())
             .collect()
     }
@@ -92,5 +99,36 @@ mod tests {
         assert_eq!(assembled.len(), 3);
         assert_eq!(assembled[0].content, "Hello");
         assert_eq!(assembled[2].content, "How are you?");
+    }
+
+    #[test]
+    fn test_filter_tool_duplicates_keeps_only_latest() {
+        let planner = Planner::new();
+
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "Primero"),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: old data",
+            ),
+            Message::new(crate::domain::message::Role::Assistant, "Some answer"),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: fresh data",
+            ),
+            Message::new(crate::domain::message::Role::User, "Segundo"),
+        ];
+
+        let filtered = planner.filter_tool_duplicates(&messages);
+
+        let tool_count = filtered
+            .iter()
+            .filter(|m| m.role == crate::domain::message::Role::Tool)
+            .count();
+        assert_eq!(tool_count, 1, "Only one Tool should remain");
+        assert!(
+            filtered.iter().any(|m| m.content.contains("fresh data")),
+            "Fresh tool result should be kept"
+        );
     }
 }

@@ -25,15 +25,17 @@ impl<'a> AgentLoop<'a> {
     pub async fn run(&mut self, incoming_msg: Message) -> Result<Message> {
         info!("Starting agent loop");
 
-        // 1. Recover memory
-        let context = self.memory.fetch_context(10)?;
+        // 1. Recover memory and filter stale tool results
+        let raw_context = self.memory.fetch_context(10)?;
+        let context = self.planner.filter_tool_duplicates(&raw_context);
 
         // Save initial user message to db immediately
         self.memory.save_message(&incoming_msg)?;
 
         // 2-3. Build Prompt
         let system_prompt = self.planner.build_system_prompt();
-        let mut active_messages = self.planner.assemble_messages(&context, &incoming_msg);
+        let mut active_messages = context;
+        active_messages.push(incoming_msg.clone());
 
         let mut iterations = 0;
         let max_iterations = 4;
@@ -41,6 +43,9 @@ impl<'a> AgentLoop<'a> {
         while iterations < max_iterations {
             iterations += 1;
             info!("Loop iteration {}/{}", iterations, max_iterations);
+
+            // Filter stale tool duplicates before LLM call
+            active_messages = self.planner.filter_tool_duplicates(&active_messages);
 
             // 4-6. Query LLM, detect, execute
             let step_result = self

@@ -171,6 +171,9 @@ impl MemoryExtractionSkill {
                 if msg_lower.starts_with(&current_lower) && msg_lower != current_lower {
                     continue;
                 }
+                if msg_lower == current_lower {
+                    continue;
+                }
                 if let Some((fact_key, fact_value)) = self.extract_fact(&msg.content) {
                     if fact_key == key {
                         return Some(fact_value);
@@ -376,12 +379,17 @@ mod tests {
     #[tokio::test]
     async fn test_memory_no_duplicate_fact() {
         let skill = MemoryExtractionSkill::new();
-        let context = create_context(vec![("Mi color favorito es azul", Role::User)]);
+        let context = create_context(vec![("Mi color favorito es rojo", Role::User)]);
         let user_msg = Message::new(Role::User, "Mi color favorito es azul");
 
         let result = skill.execute(&context, &user_msg).await.unwrap();
 
-        assert!(result.memory_updates.is_empty());
+        assert!(
+            !result.memory_updates.is_empty(),
+            "Same fact key with different value should update"
+        );
+        assert_eq!(result.memory_updates.len(), 1);
+        assert_eq!(result.memory_updates[0].operation, MemoryOperation::Update);
     }
 
     #[tokio::test]
