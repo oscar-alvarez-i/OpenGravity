@@ -437,17 +437,15 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
         .times(1)
         .in_sequence(&mut seq)
         .returning(|_, messages| {
-            // Expected context:
+            // Expected context (Phase 4 rule: tool exists, no assistant after → drop all assistants):
             // 0: User (Turn 1)
-            // 1: Assistant (Turn 1)
-            // 2: User (Turn 2)
-            // 3: Tool (Turn 2)
-            // NO "Wait." reasoning.
-            assert_eq!(messages.len(), 4);
+            // 1: User (Turn 2)
+            // 2: Tool (Turn 2)
+            // NO assistants (reasoning or turn responses).
+            assert_eq!(messages.len(), 3);
             assert_eq!(messages[0].content, "T1");
-            assert_eq!(messages[1].content, "Hello user.");
-            assert_eq!(messages[2].content, "T2");
-            assert_eq!(messages[3].role, Role::Tool);
+            assert_eq!(messages[1].content, "T2");
+            assert_eq!(messages[2].role, Role::Tool);
 
             let reasoning_leaked = messages.iter().any(|m| m.content.contains("Wait."));
             assert!(

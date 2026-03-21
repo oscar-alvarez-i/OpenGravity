@@ -46,6 +46,8 @@ impl<'a> AgentLoop<'a> {
 
             // Filter stale tool duplicates before LLM call
             active_messages = self.planner.filter_tool_duplicates(&active_messages);
+            active_messages = self.planner.compact_memory_updates(&active_messages);
+            active_messages = self.planner.compact_context(&active_messages);
 
             // 4-6. Query LLM, detect, execute
             let step_result = self
