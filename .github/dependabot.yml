@@ -15,7 +15,7 @@ updates:
       - "rust"
     reviewers:
       - "dependabot"
-    versioning-strategy: "increase"
+    versioning-strategy: "auto"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
