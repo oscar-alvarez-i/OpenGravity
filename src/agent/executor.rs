@@ -774,4 +774,30 @@ mod tests {
         assert!(result.should_continue);
         assert!(result.messages.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_executor_non_cacheable_tool_executes_fresh() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "decime la hora"),
+            Message::new(Role::Tool, "Tool result available: previous result"),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+    }
 }
