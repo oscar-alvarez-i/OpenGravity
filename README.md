@@ -151,3 +151,21 @@ The current architectural focus is:
 See:
 
 * `docs/PHASES.md`
+
+## Architecture Documents
+
+Core architectural governance lives in `docs/architecture/`.
+
+Important files:
+
+- Master Architecture
+- Active State
+- Phase Gates
+- Debug Discipline
+- Patch Template
+
+These files define active architectural constraints and phase discipline.
+
+When code and assumptions diverge:
+- code decides runtime truth
+- architecture docs decide intended direction
