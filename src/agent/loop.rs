@@ -241,7 +241,7 @@ mod tests {
         let planner = Planner::new();
 
         let mut groq = MockLlmProvider::new();
-        // Return tools - number varies based on duplicate prevention
+        // AlwaysFresh tool never hits duplicate prevention, so always re-executes
         groq.expect_generate_response()
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
@@ -252,20 +252,41 @@ mod tests {
         let executor = Executor::new(&llm, &registry, &skill_registry);
         let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
-        // Loop should complete due to duplicate prevention triggering early exit
         let res = agent_loop
-            .run(Message::new(crate::domain::message::Role::User, "hi"))
+            .run(Message::new(crate::domain::message::Role::User, "time?"))
             .await;
-        // Either completes successfully or hits max iterations
-        // (duplicate prevention causes early exit in most cases)
-        assert!(
-            res.is_ok()
-                || res
-                    .as_ref()
-                    .unwrap_err()
-                    .to_string()
-                    .contains("max iterations")
-        );
+        // get_current_time is AlwaysFresh, never blocked by duplicate prevention
+        // Loop keeps re-executing until max iterations
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("max iterations"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_continues_on_memory_only_skill() {
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+        let planner = Planner::new();
+
+        let mut groq = MockLlmProvider::new();
+        // Iter 1: Skill triggers, returns empty (memory only), continues
+        // Iter 2: LLM returns final answer
+        groq.expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("Final answer".to_string()) }));
+
+        let or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
+
+        // Memory skill triggers (color fact), executor returns empty with should_continue=true
+        let res = agent_loop
+            .run(Message::new(Role::User, "Mi color favorito es azul"))
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().content, "Final answer");
     }
 
     #[tokio::test]

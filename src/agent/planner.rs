@@ -119,7 +119,10 @@ impl Planner {
         let mut last_update_per_key: HashMap<String, (usize, Message)> = HashMap::new();
 
         for (i, msg) in messages.iter().enumerate() {
-            if msg.role == Role::System && msg.content.starts_with("MEMORY_UPDATE:") {
+            if msg.role == Role::System
+                && (msg.content.starts_with("MEMORY_UPDATE:")
+                    || msg.content.starts_with("MEMORY_SET:"))
+            {
                 if let Some(key) = self.extract_memory_key(&msg.content) {
                     last_update_per_key.insert(key, (i, msg.clone()));
                 }
@@ -133,7 +136,10 @@ impl Planner {
             .iter()
             .enumerate()
             .filter(|(i, msg)| {
-                if msg.role == Role::System && msg.content.starts_with("MEMORY_UPDATE:") {
+                if msg.role == Role::System
+                    && (msg.content.starts_with("MEMORY_UPDATE:")
+                        || msg.content.starts_with("MEMORY_SET:"))
+                {
                     latest_update_indices.contains(i)
                 } else {
                     true
@@ -144,10 +150,11 @@ impl Planner {
     }
 
     fn extract_memory_key(&self, content: &str) -> Option<String> {
-        let prefix = "MEMORY_UPDATE:";
-        if let Some(rest) = content.strip_prefix(prefix) {
-            if let Some(pos) = rest.find('=') {
-                return Some(rest[..pos].to_string());
+        for prefix in &["MEMORY_UPDATE:", "MEMORY_SET:"] {
+            if let Some(rest) = content.strip_prefix(prefix) {
+                if let Some(pos) = rest.find('=') {
+                    return Some(rest[..pos].to_string());
+                }
             }
         }
         None

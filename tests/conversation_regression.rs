@@ -696,3 +696,303 @@ async fn test_tool_split_flow_v2() -> Result<()> {
 
     Ok(())
 }
+
+// --- Stress Probe: Memory overwrite + tool + recall ---
+
+/**
+ * probe_memory_overwrite_tool_recall
+ *
+ * Scenario:
+ * Turn 1: Memory update (color=verde)
+ * Turn 2: Memory update (color=azul), then tool call
+ * Turn 3: Recall - should only see azul, not verde
+ */
+#[tokio::test]
+async fn probe_memory_overwrite_tool_recall() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Turn 1: Memory update verde
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("OK".to_string()));
+
+    // Turn 2: Memory update azul + tool
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Done".to_string()));
+
+    // Turn 3: Recall - check context
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            // Check that only latest memory is present (SET or UPDATE)
+            let memories: Vec<_> = messages
+                .iter()
+                .filter(|m| {
+                    m.content.contains("MEMORY_SET:") || m.content.contains("MEMORY_UPDATE:")
+                })
+                .collect();
+            // Should have exactly 1 memory (latest)
+            assert_eq!(
+                memories.len(),
+                1,
+                "Should have exactly 1 memory, got {:?}",
+                memories.len()
+            );
+            // Must contain azul
+            assert!(
+                memories.iter().any(|m| m.content.contains("azul")),
+                "Latest memory should contain azul"
+            );
+            // Must NOT contain verde
+            assert!(
+                !memories.iter().any(|m| m.content.contains("verde")),
+                "Stale memory verde should be excluded"
+            );
+            Ok("Final".to_string())
+        });
+
+    let llm = LlmOrchestrator::new(
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    );
+
+    // Turn 1
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Mi color favorito es verde"))
+    .await?;
+
+    // Turn 2
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(
+        Role::User,
+        "Mi color favorito es azul y también dime la hora",
+    ))
+    .await?;
+
+    // Turn 3
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Cual es mi color favorito?"))
+    .await?;
+
+    Ok(())
+}
+
+// --- Stress Probe: Multiple assistant/tool alternation ---
+
+/**
+ * probe_multiple_assistant_tool_alternation
+ *
+ * Scenario:
+ * Three turns in same conversation with tool calls
+ * Context should compact to latest assistant block only
+ */
+#[tokio::test]
+async fn probe_multiple_assistant_tool_alternation() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Turn 1
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Answer1".to_string()));
+
+    // Turn 2
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_weather".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            // Turn 2 ends with tool, so no assistant block
+            // Stale "Answer1" should be filtered out
+            let assistants: Vec<_> = messages
+                .iter()
+                .filter(|m| m.role == Role::Assistant)
+                .collect();
+            // Should have 0 assistants (tool-ending turn has no assistant block)
+            assert_eq!(
+                assistants.len(),
+                0,
+                "Tool-ending context should have 0 assistants, got {:?}",
+                assistants.len()
+            );
+            Ok("Answer2".to_string())
+        });
+
+    // Turn 3
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            // Turn 3 ends with tool, so no assistant block
+            let assistants: Vec<_> = messages
+                .iter()
+                .filter(|m| m.role == Role::Assistant)
+                .collect();
+            // Should have 0 assistants (tool-ending)
+            assert_eq!(
+                assistants.len(),
+                0,
+                "Tool-ending context should have 0 assistants, got {:?}",
+                assistants.len()
+            );
+            Ok("Final".to_string())
+        });
+
+    let llm = LlmOrchestrator::new(
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    );
+
+    // Turn 1
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "query"))
+    .await?;
+
+    // Turn 2
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "weather check"))
+    .await?;
+
+    // Turn 3
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "something else"))
+    .await?;
+
+    Ok(())
+}
+
+// --- Stress Probe: Memory update inside same turn + follow-up recall ---
+
+/**
+ * probe_memory_update_same_turn_followup_recall
+ *
+ * Scenario:
+ * Turn 1: Memory update + tool in same message
+ * Turn 2: Recall - structural validation of assistant block
+ */
+#[tokio::test]
+async fn probe_memory_update_same_turn_followup_recall() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Turn 1: Memory update + tool call
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Final answer".to_string()));
+
+    // Turn 2: Recall - structural validation
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            // Check assistant block structure after tool-ending Turn 1
+            // No assistants should appear after tool result
+            let mut seen_tool = false;
+            for msg in messages.iter() {
+                if msg.role == Role::Tool {
+                    seen_tool = true;
+                } else if seen_tool && msg.role == Role::Assistant {
+                    panic!("Should not have assistant after tool in context");
+                }
+            }
+            Ok("Recalled".to_string())
+        });
+
+    let llm = LlmOrchestrator::new(
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    );
+
+    // Turn 1: memory + tool
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(
+        Role::User,
+        "Mi occupation is engineer and what's the time?",
+    ))
+    .await?;
+
+    // Turn 2: recall
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "What is my occupation?"))
+    .await?;
+
+    Ok(())
+}

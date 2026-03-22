@@ -64,13 +64,15 @@ impl<'a> Executor<'a> {
 
     fn set_pending_plan(&mut self, plan: Plan) {
         let remaining: Vec<PlanStep> = plan.remaining_steps();
-        let len = remaining.len();
-        if !remaining.is_empty() {
-            self.pending_plan = Some(Plan { steps: remaining });
-            debug!("Pending plan set with {} remaining steps", len);
-        } else {
+        if remaining.is_empty() {
             self.pending_plan = None;
             debug!("Pending plan cleared (no remaining steps)");
+        } else {
+            self.pending_plan = Some(crate::skills::planner::Plan { steps: remaining });
+            debug!(
+                "Pending plan set with {} remaining steps",
+                self.pending_plan.as_ref().unwrap().len()
+            );
         }
     }
 
@@ -133,22 +135,12 @@ impl<'a> Executor<'a> {
                     match step {
                         PlanStep::Tool(tool_name) => {
                             let tool_msg = self.execute_tool_step(tool_name)?;
-                            let remaining = plan.remaining_steps();
-                            if !remaining.is_empty() {
-                                self.set_pending_plan(crate::skills::planner::Plan {
-                                    steps: remaining,
-                                });
-                            }
+                            self.set_pending_plan(plan);
                             return Ok(StepResult::new(vec![tool_msg], true));
                         }
                         PlanStep::Direct(_content) => {
-                            let remaining = plan.remaining_steps();
-                            let remaining_count = remaining.len();
-                            if remaining_count > 0 {
-                                self.set_pending_plan(crate::skills::planner::Plan {
-                                    steps: remaining,
-                                });
-                            }
+                            let remaining_count = plan.remaining_steps().len();
+                            self.set_pending_plan(plan);
                             debug!(
                                 "Pending Direct step consumed, remaining: {}",
                                 remaining_count
@@ -572,5 +564,214 @@ mod tests {
 
         assert!(res.is_ok(), "Loop should complete: {:?}", res);
         assert!(res.unwrap().content.contains("3pm"));
+    }
+
+    #[tokio::test]
+    async fn test_executor_duplicate_tool_blocked() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "What's the weather?"),
+            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
+    }
+
+    #[tokio::test]
+    async fn test_executor_pending_plan_cleared_when_empty() {
+        let mock_groq = MockLlmProvider::new();
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![PlanStep::Direct("final step".to_string())],
+        });
+
+        let messages = vec![Message::new(Role::User, "execute")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert!(result.messages.is_empty());
+        assert!(!executor.has_pending_plan());
+    }
+
+    #[tokio::test]
+    async fn test_executor_skill_miss_falls_through_to_llm() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("LLM response".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "hello world")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
+        assert_eq!(result.messages[0].content, "LLM response");
+    }
+
+    #[tokio::test]
+    async fn test_executor_pending_plan_tool_execution() {
+        let mock_groq = MockLlmProvider::new();
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![
+                PlanStep::Tool("get_current_time".to_string()),
+                PlanStep::Direct("continue".to_string()),
+            ],
+        });
+
+        let messages = vec![Message::new(Role::User, "skip")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(executor.has_pending_plan());
+    }
+
+    #[tokio::test]
+    async fn test_executor_skip_duplicate_non_fresh_tool() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "weather?"),
+            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
+    }
+
+    #[tokio::test]
+    async fn test_executor_planner_direct_with_remaining() {
+        // pending_plan Direct consumes the step and sets remaining plan
+        // no LLM call needed since pending_plan is taken
+        let mock_groq = MockLlmProvider::new();
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![
+                PlanStep::Direct("first".to_string()),
+                PlanStep::Direct("second".to_string()),
+            ],
+        });
+
+        let messages = vec![Message::new(Role::User, "go")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert!(result.messages.is_empty());
+        assert!(executor.has_pending_plan());
+    }
+
+    #[tokio::test]
+    async fn test_executor_tool_result_error_path() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:nonexistent_tool".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "test")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(result.messages[0].content.contains("Tool execution error"));
+    }
+
+    #[tokio::test]
+    async fn test_executor_b1_sets_pending_plan_from_memory() {
+        // Test that B1 (factual fragment skill) sets pending plan from create_plan
+        // "Mi color favorito es azul y después dime la hora" triggers:
+        // 1. B1: extract factual fragment + memory update
+        // 2. create_plan on full content creates pending plan
+        // 3. pending plan contains Direct step "deme la hora"
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .returning(|_, _| Box::pin(async { Ok("Final".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(
+            Role::User,
+            "Mi color favorito es azul y después dime la hora",
+        )];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        // B1 should trigger, create_plan creates pending plan
+        assert!(executor.has_pending_plan());
+        assert!(result.should_continue);
+        assert!(result.messages.is_empty());
     }
 }
