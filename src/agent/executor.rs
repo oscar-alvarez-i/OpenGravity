@@ -173,15 +173,24 @@ impl<'a> Executor<'a> {
                             );
                         }
 
-                        let mut step_result = if let Some(content) = skill_result.content {
-                            StepResult::new(vec![Message::new(Role::Assistant, content)], false)
+                        let plan_for_pending = if !skill_result.memory_updates.is_empty() {
+                            self.planner.create_plan(content)
+                        } else {
+                            None
+                        };
+
+                        let mut step_result = if let Some(c) = skill_result.content {
+                            StepResult::new(
+                                vec![Message::new(Role::Assistant, c)],
+                                plan_for_pending.is_some() || skill_result.should_continue,
+                            )
                         } else {
                             StepResult::new(Vec::new(), true)
                         };
 
                         if !skill_result.memory_updates.is_empty() {
                             step_result.memory_updates = skill_result.memory_updates;
-                            if let Some(plan) = self.planner.create_plan(content) {
+                            if let Some(plan) = plan_for_pending {
                                 self.set_pending_plan(plan);
                             }
                         }
@@ -742,6 +751,125 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].role, Role::Tool);
         assert!(result.messages[0].content.contains("Tool execution error"));
+    }
+
+    #[tokio::test]
+    async fn test_executor_b1_preserves_skill_content() {
+        #[derive(Debug)]
+        struct ContentSkill;
+        #[async_trait::async_trait]
+        impl crate::skills::r#trait::Skill for ContentSkill {
+            fn name(&self) -> &str {
+                "content_skill"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn side_effects(&self) -> crate::skills::r#trait::SideEffects {
+                crate::skills::r#trait::SideEffects::none()
+            }
+            fn trigger(&self) -> crate::skills::r#trait::TriggerType {
+                crate::skills::r#trait::TriggerType::OnPattern("B1TEST")
+            }
+            async fn execute(
+                &self,
+                _context: &[Message],
+                _user_message: &Message,
+            ) -> anyhow::Result<crate::skills::r#trait::SkillOutput> {
+                Ok(crate::skills::r#trait::SkillOutput::continue_with(
+                    "B1 content preserved",
+                ))
+            }
+        }
+
+        let mut skill_registry = SkillRegistry::new();
+        skill_registry.register(Box::new(ContentSkill));
+
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "B1TEST: algo y después algo más")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(
+            result.should_continue,
+            "B1 skill with content but no pending plan: should_continue follows skill.should_continue"
+        );
+        assert_eq!(
+            result.messages.len(),
+            1,
+            "B1 should return exactly one Assistant message with skill content"
+        );
+        assert_eq!(result.messages[0].role, Role::Assistant);
+        assert_eq!(
+            result.messages[0].content, "B1 content preserved",
+            "B1 skill content must not be discarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_b1_content_with_pending_plan_continues() {
+        #[derive(Debug)]
+        struct ContentWithPlanSkill;
+        #[async_trait::async_trait]
+        impl crate::skills::r#trait::Skill for ContentWithPlanSkill {
+            fn name(&self) -> &str {
+                "content_with_plan_skill"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn side_effects(&self) -> crate::skills::r#trait::SideEffects {
+                crate::skills::r#trait::SideEffects::reads_writes()
+            }
+            fn trigger(&self) -> crate::skills::r#trait::TriggerType {
+                crate::skills::r#trait::TriggerType::OnPattern("mi color")
+            }
+            async fn execute(
+                &self,
+                _context: &[Message],
+                _user_message: &Message,
+            ) -> anyhow::Result<crate::skills::r#trait::SkillOutput> {
+                Ok(
+                    crate::skills::r#trait::SkillOutput::done("Got fact").with_memory_updates(
+                        vec![crate::skills::r#trait::MemoryUpdate {
+                            fact_key: "color".to_string(),
+                            fact_value: "azul".to_string(),
+                            operation: crate::skills::r#trait::MemoryOperation::Set,
+                        }],
+                    ),
+                )
+            }
+        }
+
+        let mut skill_registry = SkillRegistry::new();
+        skill_registry.register(Box::new(ContentWithPlanSkill));
+
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(
+            Role::User,
+            "Mi color favorito es azul y después dime la hora",
+        )];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(
+            executor.has_pending_plan(),
+            "Pending plan is set by B1 even with content"
+        );
+        assert!(
+            result.should_continue,
+            "B1: with content AND pending plan, should_continue must be true (loop must continue)"
+        );
     }
 
     #[tokio::test]
