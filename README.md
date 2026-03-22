@@ -1,58 +1,153 @@
 # OpenGravity
 
-OpenGravity is a production-grade, local-first AI agent written entirely in Rust, interacting primarily through Telegram. 
-It guarantees zero-trust arbitrary tool executions, enforces strict whitelist barriers, and has immutable zero-warning, 95%+ coverage rules.
+OpenGravity is a local-first conversational AI agent written in Rust, designed around explicit execution control, deterministic orchestration, and bounded tool usage.
 
-## Features
-- **Local-first Memory Persistence:** SQLite stores conversational context safely without third-party exfiltration.
-- **Telegram Native:** Long polling strategy ensuring real-time responsiveness.
-- **Strict Security:** Whitelist-only access. Zero-trust tool execution strategy.
-- **Fail-safe LLM Orchestration:** Queries Groq primarily, safely falling back to OpenRouter on timeouts/5xx.
+It currently operates primarily through Telegram and emphasizes runtime clarity over hidden agent autonomy.
 
-## Installation
+---
 
-1. Install Rust via [rustup](https://rustup.rs/).
-2. Clone this repository.
+# Core Principles
 
-## Configuration
+- explicit execution over implicit agent behavior
+- local-first state persistence
+- bounded tool invocation
+- deterministic runtime transitions
+- strict validation discipline
 
-Copy `.env.example` to `.env` and fill the variables:
+---
+
+# Current Runtime Architecture
+
+OpenGravity separates planning, execution, memory extraction, and response generation into explicit runtime stages.
+
+```mermaid
+flowchart TD
+    A[User Input] --> B[Planner]
+    B --> C[Pending Plan]
+    C --> D[Executor]
+    D --> E[Tool or LLM Response]
+    E --> F[Memory Extraction]
+    F --> G[State Commit]
+````
+
+The Rust runtime remains the execution authority.
+
+The language model supports semantic generation but does not control orchestration.
+
+Detailed architecture:
+
+* `docs/ARCHITECTURE.md`
+
+---
+
+# Current Capabilities
+
+* local conversation persistence using SQLite
+* Telegram-native interaction
+* explicit pending plan execution
+* bounded tool invocation
+* provider fallback handling
+
+---
+
+# Documentation
+
+Technical references:
+
+* `docs/ARCHITECTURE.md`
+* `docs/KNOWN_FRAGILITIES.md`
+* `docs/PHASES.md`
+* `docs/adr/`
+
+Project evolution:
+
+* `ROADMAP.md`
+* `RELEASE.md`
+
+Contribution rules:
+
+* `CONTRIBUTING.md`
+
+---
+
+# Installation
+
+1. Install Rust via [https://rustup.rs/](https://rustup.rs/)
+2. Clone the repository
+
+---
+
+# Configuration
+
+Copy `.env.example` to `.env`
+
 ```bash
 cp .env.example .env
 ```
 
-Ensure `TELEGRAM_ALLOWED_USER_IDS` is filled out with your distinct Telegram Numeric ID (comma separated).
+Required:
 
-## Running the Agent
+* Telegram bot token
+* allowed Telegram user IDs
+* provider credentials
+
+Ensure:
+
+`TELEGRAM_ALLOWED_USER_IDS`
+
+contains your Telegram numeric user ID list.
+
+---
+
+# Running
 
 ```bash
-# Build binary
 cargo build --release
-
-# Run locally
 cargo run --release
 ```
 
-## Testing & Quality Assurance
+---
 
-Before making any commits, you must run the strict validation suite:
+# Validation
+
+Before committing, run:
 
 ```bash
 ./scripts/check.sh
 ```
 
 This enforces:
-- `cargo fmt`
-- `cargo clippy` (with zero warnings)
-- `cargo test` and `cargo nextest run`
-- `cargo tarpaulin --fail-under 95` (95% code coverage minimum)
-- `cargo audit` and `cargo deny check` (Zero security debt and OSI-approved licenses)
 
-## Continuous Integration
-Pushing to the repo runs GitHub Actions (`ci.yml`) guarding the main branch perfectly:
-1. `fmt`
-2. `clippy -- -D warnings`
-3. `cargo test` / `cargo nextest`
-4. `cargo tarpaulin --fail-under 95`
-5. `cargo audit`
-6. `cargo deny`
+* `cargo fmt`
+* `cargo clippy -- -D warnings`
+* `cargo test`
+* `cargo nextest run`
+* `cargo tarpaulin --fail-under 95`
+* `cargo audit`
+* `cargo deny check`
+
+---
+
+# CI Discipline
+
+GitHub Actions validates:
+
+* formatting
+* warnings
+* tests
+* coverage
+* dependency safety
+
+---
+
+# Current Focus
+
+The current architectural focus is:
+
+* executor hardening
+* skill formalization
+* stronger execution contracts
+
+See:
+
+* `docs/PHASES.md`
