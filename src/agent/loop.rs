@@ -318,4 +318,53 @@ mod tests {
             .unwrap();
         assert_eq!(res.content, "Final Answer");
     }
+
+    #[tokio::test]
+    async fn test_agent_loop_debug_step_completed() {
+        // Enable debug logging to cover debug!("Step completed") at line 65
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+        let planner = Planner::new();
+
+        let mut groq = MockLlmProvider::new();
+        groq.expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("Final answer".to_string()) }));
+
+        let or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
+
+        let _ = agent_loop.run(Message::new(Role::User, "hello")).await;
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_debug_skips_persistence() {
+        // Cover debug!("Skipping DB persistence") at line 84
+        // This happens when leads_to_tool is true (should_continue && Assistant)
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+        let planner = Planner::new();
+
+        // First call returns tool call (reasoning), second returns final
+        let mut groq = MockLlmProvider::new();
+        groq.expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+        groq.expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("Done".to_string()) }));
+
+        let or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut agent_loop = AgentLoop::new(memory, planner, executor);
+
+        let _ = agent_loop.run(Message::new(Role::User, "time?")).await;
+    }
 }

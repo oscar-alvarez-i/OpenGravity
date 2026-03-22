@@ -144,3 +144,20 @@ pub enum MemoryOperation {
     Update,
     Delete,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trigger_type_always() {
+        let trigger = TriggerType::Always;
+        assert!(trigger.matches("anything"));
+    }
+
+    #[test]
+    fn test_trigger_type_never() {
+        let trigger = TriggerType::Never;
+        assert!(!trigger.matches("anything"));
+    }
+}

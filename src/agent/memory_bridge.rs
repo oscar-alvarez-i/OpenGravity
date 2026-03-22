@@ -46,3 +46,38 @@ impl<'a> MemoryBridge<'a> {
             .map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_save_memory_update_set() {
+        let db = Db::new(":memory:").unwrap();
+        let bridge = MemoryBridge::new(&db, "u");
+        let update = MemoryUpdate {
+            fact_key: "test".to_string(),
+            fact_value: "value".to_string(),
+            operation: crate::skills::r#trait::MemoryOperation::Set,
+        };
+        assert!(bridge.save_memory_update(&update).is_ok());
+        let memories = db.fetch_latest_memories("u", 10).unwrap();
+        assert!(!memories.is_empty());
+        assert!(memories[0].content.contains("MEMORY_SET:test=value"));
+    }
+
+    #[test]
+    fn test_save_memory_update_delete() {
+        let db = Db::new(":memory:").unwrap();
+        let bridge = MemoryBridge::new(&db, "u");
+        let update = MemoryUpdate {
+            fact_key: "test".to_string(),
+            fact_value: "".to_string(),
+            operation: crate::skills::r#trait::MemoryOperation::Delete,
+        };
+        assert!(bridge.save_memory_update(&update).is_ok());
+        let memories = db.fetch_latest_memories("u", 10).unwrap();
+        assert!(!memories.is_empty());
+        assert!(memories[0].content.contains("MEMORY_DELETE:test"));
+    }
+}

@@ -131,4 +131,11 @@ mod tests {
             "Tool implementation not found or unauthorized"
         );
     }
+
+    #[test]
+    fn test_parse_tool_call_empty_string() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("");
+        assert!(res.is_none());
+    }
 }

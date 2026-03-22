@@ -263,4 +263,18 @@ mod tests {
         assert!(selected.is_some(), "Should trigger memory skill");
         assert_eq!(selected.unwrap().name(), "memory_extraction");
     }
+
+    #[test]
+    #[allow(clippy::len_zero)]
+    fn test_registry_is_empty_and_len() {
+        let registry = SkillRegistry::new();
+        assert!(!registry.is_empty());
+        assert!(registry.len() > 0);
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = SkillRegistry::default();
+        assert!(!registry.is_empty());
+    }
 }
