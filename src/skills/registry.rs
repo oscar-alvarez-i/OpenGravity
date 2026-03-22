@@ -7,12 +7,14 @@ use tracing::{debug, info};
 
 pub struct SkillRegistry {
     skills: HashMap<String, Box<dyn Skill>>,
+    order: Vec<String>,
 }
 
 impl SkillRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
             skills: HashMap::new(),
+            order: Vec::new(),
         };
         registry.register(Box::new(MemoryExtractionSkill::new()));
         registry
@@ -21,7 +23,13 @@ impl SkillRegistry {
     pub fn register(&mut self, skill: Box<dyn Skill>) {
         let name = skill.name().to_string();
         info!("Registering skill: {}", name);
-        self.skills.insert(name, skill);
+
+        let is_new = !self.skills.contains_key(&name);
+        self.skills.insert(name.clone(), skill);
+
+        if is_new {
+            self.order.push(name);
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<&dyn Skill> {
@@ -43,11 +51,13 @@ impl SkillRegistry {
     pub fn select_skill(&self, user_message: &str, _context: &[Message]) -> Option<&dyn Skill> {
         debug!("Selecting skill for message: {}", user_message);
 
-        for skill in self.skills.values() {
-            let trigger = skill.trigger();
-            if trigger.matches(user_message) {
-                debug!("Skill '{}' triggered by pattern", skill.name());
-                return Some(skill.as_ref());
+        for name in &self.order {
+            if let Some(skill) = self.skills.get(name) {
+                let trigger = skill.trigger();
+                if trigger.matches(user_message) {
+                    debug!("Skill '{}' triggered by pattern", skill.name());
+                    return Some(skill.as_ref());
+                }
             }
         }
 
@@ -276,5 +286,83 @@ mod tests {
     fn test_registry_default() {
         let registry = SkillRegistry::default();
         assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_select_skill_respects_registration_order() {
+        let mut registry = SkillRegistry::new();
+        registry.register(Box::new(TestSkill {
+            name: "skill_a",
+            trigger: TriggerType::Always,
+        }));
+        registry.register(Box::new(TestSkill {
+            name: "skill_b",
+            trigger: TriggerType::Always,
+        }));
+
+        let selected = registry.select_skill("any message", &[]);
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().name(), "skill_a");
+    }
+
+    #[test]
+    fn test_select_skill_order_after_auto_registered_memory() {
+        let mut registry = SkillRegistry::new();
+        registry.register(Box::new(TestSkill {
+            name: "skill_after_memory",
+            trigger: TriggerType::Always,
+        }));
+
+        let selected = registry.select_skill("any message", &[]);
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().name(), "skill_after_memory");
+    }
+
+    #[test]
+    fn test_select_skill_first_registered_wins() {
+        let mut registry = SkillRegistry::new();
+        registry.register(Box::new(TestSkill {
+            name: "first",
+            trigger: TriggerType::Always,
+        }));
+        registry.register(Box::new(TestSkill {
+            name: "second",
+            trigger: TriggerType::Always,
+        }));
+
+        let selected = registry.select_skill("test", &[]);
+        assert_eq!(selected.unwrap().name(), "first");
+    }
+
+    #[test]
+    fn test_reregister_skill_preserves_order() {
+        let mut registry = SkillRegistry::new();
+        registry.register(Box::new(TestSkill {
+            name: "first",
+            trigger: TriggerType::Always,
+        }));
+        registry.register(Box::new(TestSkill {
+            name: "first",
+            trigger: TriggerType::Always,
+        }));
+
+        let selected = registry.select_skill("test", &[]);
+        assert_eq!(selected.unwrap().name(), "first");
+    }
+
+    #[test]
+    fn test_two_different_skills_always_first_wins() {
+        let mut registry = SkillRegistry::new();
+        registry.register(Box::new(TestSkill {
+            name: "first",
+            trigger: TriggerType::Always,
+        }));
+        registry.register(Box::new(TestSkill {
+            name: "second",
+            trigger: TriggerType::Always,
+        }));
+
+        let selected = registry.select_skill("any message", &[]);
+        assert_eq!(selected.unwrap().name(), "first");
     }
 }
