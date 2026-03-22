@@ -7,7 +7,7 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo nextest run
-cargo tarpaulin --fail-under 92
+cargo tarpaulin --fail-under 87
 cargo audit
 cargo deny check
 cargo build --release

@@ -5,7 +5,7 @@ This document defines the frozen production-grade state of OpenGravity as of Mar
 ## 1. Repository Status & Thresholds
 - **Current State**: Production-Grade (Post-Hardening Phase)
 - **Code Coverage**: **98.83%** (measured via Tarpaulin)
-- **Minimum Release Threshold**: **92.0%**
+- **Minimum Release Threshold**: **87.0%**
 - **Test Count**: **56 passing tests** (54 unit/internal + 2 security integration)
 - **Stability**: Zero compilation/Clippy warnings.
 

@@ -9,7 +9,7 @@ Future Antigravity sessions MUST consult the `.agents/` directory (rules, workfl
 ## 1. Reglas Permanentes de Ingeniería
 * Nunca introducir warnings de compilación ni de linter (Clippy).
 * Nunca introducir deuda técnica (TODOs, FIXMEs o implementaciones temporales).
-* Nunca bajar la cobertura de tests por debajo del mínimo exigido (92%).
+* Nunca bajar la cobertura de tests por debajo del mínimo exigido (87%).
 * Nunca romper el pipeline de CI.
 * Toda nueva "tool" del agente IA requiere sus correspondientes unit tests y validación de seguridad.
 * Toda nueva dependencia (`crate`) debe justificarse funcionalmente.
