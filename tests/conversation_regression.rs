@@ -124,15 +124,11 @@ async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
     let result = agent_loop.run(Message::new(Role::User, "loop test")).await;
 
     // Either completes or hits max iterations - both are acceptable for get_current_time
-    if result.is_err() {
+    if let Err(e) = &result {
         assert!(
-            result
-                .as_ref()
-                .unwrap_err()
-                .to_string()
-                .contains("max iterations"),
+            e.to_string().contains("max iterations"),
             "Unexpected error: {}",
-            result.unwrap_err()
+            e
         );
     }
 

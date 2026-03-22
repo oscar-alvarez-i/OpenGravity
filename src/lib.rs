@@ -94,15 +94,11 @@ mod integration_tests {
 
         // Loop may complete or hit max iterations depending on get_current_time behavior
         // Either way, it should not panic or error unexpectedly
-        if response.is_err() {
+        if let Err(e) = &response {
             assert!(
-                response
-                    .as_ref()
-                    .unwrap_err()
-                    .to_string()
-                    .contains("max iterations"),
+                e.to_string().contains("max iterations"),
                 "Unexpected error: {}",
-                response.unwrap_err()
+                e
             );
         }
     }
