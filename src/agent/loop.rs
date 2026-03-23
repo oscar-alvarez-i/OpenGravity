@@ -28,6 +28,7 @@ impl<'a> AgentLoop<'a> {
         // 1. Recover memory and filter stale tool results
         let raw_context = self.memory.fetch_context(10)?;
         let context = self.planner.filter_tool_duplicates(&raw_context);
+        let context = self.planner.filter_closed_tool_cycles(&context);
 
         // Save initial user message to db immediately
         self.memory.save_message(&incoming_msg)?;
@@ -46,6 +47,7 @@ impl<'a> AgentLoop<'a> {
 
             // Filter stale tool duplicates before LLM call
             active_messages = self.planner.filter_tool_duplicates(&active_messages);
+            active_messages = self.planner.filter_closed_tool_cycles(&active_messages);
             active_messages = self.planner.compact_memory_updates(&active_messages);
             active_messages = self.planner.compact_context(&active_messages);
 
@@ -366,5 +368,50 @@ mod tests {
         let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         let _ = agent_loop.run(Message::new(Role::User, "time?")).await;
+    }
+
+    #[tokio::test]
+    async fn test_integration_filter_closed_tool_cycles_persisted() {
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+        let planner = Planner::new();
+
+        memory
+            .save_message(&Message::new(Role::User, "decime la hora"))
+            .unwrap();
+        memory
+            .save_message(&Message::new(
+                Role::Assistant,
+                "Voy a llamar la herramienta\nTOOL:get_current_time",
+            ))
+            .unwrap();
+        memory
+            .save_message(&Message::new(Role::Tool, "Tool result available: 18:55"))
+            .unwrap();
+
+        memory
+            .save_message(&Message::new(Role::User, "mi color favorito es azul"))
+            .unwrap();
+
+        let raw_context = memory.fetch_context(10).unwrap();
+        let filtered = planner.filter_tool_duplicates(&raw_context);
+        let filtered = planner.filter_closed_tool_cycles(&filtered);
+
+        let has_old_user = filtered
+            .iter()
+            .any(|m| m.role == Role::User && m.content.contains("hora"));
+        let has_old_tool = filtered
+            .iter()
+            .any(|m| m.role == Role::Tool && m.content.contains("Tool result"));
+        let has_new_user = filtered
+            .iter()
+            .any(|m| m.role == Role::User && m.content.contains("color"));
+
+        assert!(
+            !has_old_user,
+            "Old user message with tool intent should be filtered"
+        );
+        assert!(!has_old_tool, "Old tool result should be filtered");
+        assert!(has_new_user, "Latest user message should be preserved");
     }
 }

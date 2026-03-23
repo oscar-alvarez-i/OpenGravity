@@ -60,6 +60,56 @@ impl Planner {
             .collect()
     }
 
+    pub fn filter_closed_tool_cycles(&self, messages: &[Message]) -> Vec<Message> {
+        use crate::domain::message::Role;
+
+        if messages.is_empty() {
+            return Vec::new();
+        }
+
+        let last_user_idx = messages
+            .iter()
+            .rposition(|m| m.role == Role::User)
+            .unwrap_or(0);
+
+        let mut result = Vec::new();
+        let mut i = 0;
+
+        while i < messages.len() {
+            if i < last_user_idx && messages[i].role == Role::User {
+                let mut found_tool_call = false;
+                let mut found_tool_result = false;
+                let mut j = i + 1;
+
+                while j < messages.len() && j < last_user_idx {
+                    if messages[j].role == Role::Assistant && messages[j].content.contains("TOOL:")
+                    {
+                        found_tool_call = true;
+                    }
+                    if messages[j].role == Role::Tool
+                        && messages[j].content.contains("Tool result available:")
+                    {
+                        found_tool_result = true;
+                    }
+                    if found_tool_call && found_tool_result {
+                        break;
+                    }
+                    j += 1;
+                }
+
+                if found_tool_call && found_tool_result {
+                    i = j + 1;
+                    continue;
+                }
+            }
+
+            result.push(messages[i].clone());
+            i += 1;
+        }
+
+        result
+    }
+
     fn extract_tool_name_from_result(&self, content: &str) -> Option<String> {
         if content.contains("get_current_time") {
             Some("get_current_time".to_string())
@@ -555,5 +605,94 @@ mod tests {
         assert_eq!(compacted[0].content, "user message");
         assert_eq!(compacted[1].content, "MEMORY_UPDATE:favorite_color=azul");
         assert_eq!(compacted[2].content, "Tool result available: time");
+    }
+
+    #[test]
+    fn test_filter_closed_tool_cycles_removes_time_question() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "decime la hora"),
+            Message::new(
+                crate::domain::message::Role::Assistant,
+                "TOOL:get_current_time",
+            ),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: 10:00",
+            ),
+            Message::new(
+                crate::domain::message::Role::User,
+                "mi color favorito es azul",
+            ),
+        ];
+        let filtered = planner.filter_closed_tool_cycles(&messages);
+        assert_eq!(filtered.len(), 1);
+        assert!(filtered[0].content.contains("color"));
+    }
+
+    #[test]
+    fn test_filter_closed_tool_cycles_keeps_latest_user_message() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "decime la hora"),
+            Message::new(
+                crate::domain::message::Role::Assistant,
+                "TOOL:get_current_time",
+            ),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: 10:00",
+            ),
+            Message::new(
+                crate::domain::message::Role::User,
+                "mi color favorito es azul",
+            ),
+        ];
+        let filtered = planner.filter_closed_tool_cycles(&messages);
+        let last_user = filtered
+            .iter()
+            .rfind(|m| m.role == crate::domain::message::Role::User);
+        assert!(last_user.is_some());
+        assert!(last_user.unwrap().content.contains("color"));
+    }
+
+    #[test]
+    fn test_filter_closed_tool_cycles_preserves_non_tool_messages() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "hola como estas"),
+            Message::new(crate::domain::message::Role::Assistant, "bien y tu?"),
+            Message::new(
+                crate::domain::message::Role::User,
+                "mi color favorito es azul",
+            ),
+        ];
+        let filtered = planner.filter_closed_tool_cycles(&messages);
+        assert_eq!(filtered.len(), 3);
+    }
+
+    #[test]
+    fn test_filter_closed_tool_cycles_removes_complete_tool_block() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "dime la hora"),
+            Message::new(
+                crate::domain::message::Role::Assistant,
+                "TOOL:get_current_time",
+            ),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: 12:00",
+            ),
+            Message::new(crate::domain::message::Role::User, "cual es mi color?"),
+        ];
+        let filtered = planner.filter_closed_tool_cycles(&messages);
+
+        let has_tool_call = filtered.iter().any(|m| m.content.contains("TOOL:"));
+        let has_tool_result = filtered.iter().any(|m| m.content.contains("Tool result"));
+
+        assert!(!has_tool_call, "Tool call should be removed");
+        assert!(!has_tool_result, "Tool result should be removed");
+        assert!(!filtered.is_empty(), "Latest user message should be kept");
     }
 }
