@@ -1,3 +1,4 @@
+pub mod echo;
 pub mod memory;
 pub mod planner;
 pub mod registry;

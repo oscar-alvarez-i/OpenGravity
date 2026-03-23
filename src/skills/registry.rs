@@ -1,4 +1,5 @@
 use crate::domain::message::Message;
+use crate::skills::echo::EchoSkill;
 use crate::skills::memory::MemoryExtractionSkill;
 use crate::skills::r#trait::{Skill, SkillOutput};
 use anyhow::Result;
@@ -17,6 +18,7 @@ impl SkillRegistry {
             order: Vec::new(),
         };
         registry.register(Box::new(MemoryExtractionSkill::new()));
+        registry.register(Box::new(EchoSkill::new()));
         registry
     }
 
@@ -364,5 +366,26 @@ mod tests {
 
         let selected = registry.select_skill("any message", &[]);
         assert_eq!(selected.unwrap().name(), "first");
+    }
+
+    #[test]
+    fn test_memory_and_echo_skill_coexistence() {
+        let registry = SkillRegistry::new();
+
+        let msg_with_both = "mi color favorito es azul echo hola";
+        let selected = registry.select_skill(msg_with_both, &[]);
+
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().name(), "memory_extraction");
+    }
+
+    #[test]
+    fn test_echo_skill_selected_when_only_echo_present() {
+        let registry = SkillRegistry::new();
+
+        let selected = registry.select_skill("echo hola", &[]);
+
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().name(), "echo");
     }
 }
