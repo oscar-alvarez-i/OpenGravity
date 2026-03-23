@@ -70,35 +70,41 @@ impl Planner {
         let last_user_idx = messages
             .iter()
             .rposition(|m| m.role == Role::User)
-            .unwrap_or(0);
+            .unwrap_or(messages.len().saturating_sub(1));
 
         let mut result = Vec::new();
         let mut i = 0;
 
         while i < messages.len() {
-            if i < last_user_idx && messages[i].role == Role::User {
-                let mut found_tool_call = false;
-                let mut found_tool_result = false;
-                let mut j = i + 1;
+            if i >= last_user_idx {
+                result.push(messages[i].clone());
+                i += 1;
+                continue;
+            }
 
-                while j < messages.len() && j < last_user_idx {
-                    if messages[j].role == Role::Assistant && messages[j].content.contains("TOOL:")
+            if messages[i].role == Role::User {
+                let mut tool_result_idx: Option<usize> = None;
+
+                for (j, msg_next) in messages.iter().enumerate().skip(i + 1) {
+                    if msg_next.role == Role::Tool
+                        && msg_next.content.contains("Tool result available:")
                     {
-                        found_tool_call = true;
-                    }
-                    if messages[j].role == Role::Tool
-                        && messages[j].content.contains("Tool result available:")
-                    {
-                        found_tool_result = true;
-                    }
-                    if found_tool_call && found_tool_result {
+                        tool_result_idx = Some(j);
                         break;
                     }
-                    j += 1;
+                    if msg_next.role == Role::User {
+                        break;
+                    }
+                    if msg_next.role == Role::System
+                        && (msg_next.content.starts_with("MEMORY_SET:")
+                            || msg_next.content.starts_with("MEMORY_UPDATE:"))
+                    {
+                        break;
+                    }
                 }
 
-                if found_tool_call && found_tool_result {
-                    i = j + 1;
+                if let Some(tool_idx) = tool_result_idx {
+                    i = tool_idx + 1;
                     continue;
                 }
             }
@@ -694,5 +700,28 @@ mod tests {
         assert!(!has_tool_call, "Tool call should be removed");
         assert!(!has_tool_result, "Tool result should be removed");
         assert!(!filtered.is_empty(), "Latest user message should be kept");
+    }
+
+    #[test]
+    fn test_filter_closed_tool_cycles_user_plus_tool_no_assistant() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "decime la hora"),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: 19:28",
+            ),
+            Message::new(
+                crate::domain::message::Role::User,
+                "mi color favorito es azul",
+            ),
+        ];
+        let filtered = planner.filter_closed_tool_cycles(&messages);
+
+        assert_eq!(filtered.len(), 1, "Should only keep latest user message");
+        assert!(
+            filtered[0].content.contains("color"),
+            "Should be the memory fact message"
+        );
     }
 }
