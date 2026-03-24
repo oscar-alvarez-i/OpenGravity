@@ -119,25 +119,34 @@ Skill formalization remained incomplete.
 
 ---
 
-# Phase 5 — Skill Formalization (In Progress)
+# Phase 5 — Skill Formalization (Closed)
 
 ## Goal
 
 Move repeated execution patterns into explicit reusable skills.
 
-## Current Direction
+## Main Outcomes
 
-- define stable skill boundaries
-- prevent skill autonomy drift
-- preserve executor authority
+- skill framework with deterministic ordering
+- registry with auto-registration
+- echo skill as second working skill
+- planner context hygiene filters:
+  - filter_closed_tool_cycles: remove stale tool triplets
+  - trim_stale_user_turns: keep only latest user turn
+- executor same-turn tool blocking: prevents loop reopening
 
-## Expected Architectural Impact
+## Architectural Impact
 
-Skills should reduce planner complexity without weakening determinism.
+Skills added without weakening executor authority. Context trimming preserves determinism.
 
-## Main Constraint To Preserve
+## Main Constraint Preserved
 
 A skill must never become an implicit planner.
+
+## Known Limitations Remaining
+
+- skill selection uses single path (first match)
+- no priority weighting system
 
 ---
 

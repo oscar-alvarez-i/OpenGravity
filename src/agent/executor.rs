@@ -480,6 +480,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_same_turn_tool_only_strips_returns_empty() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "weather?"),
+            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
+        assert!(result.messages[0].content.is_empty());
+    }
+
+    #[tokio::test]
     async fn test_skill_runs_before_llm() {
         let mut mock_groq = MockLlmProvider::new();
         mock_groq
