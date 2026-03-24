@@ -7,6 +7,21 @@ use crate::domain::message::{Message, Role};
 use anyhow::{anyhow, Result};
 use tracing::{debug, info, warn};
 
+const MAX_LOOP_ITERATIONS: usize = 4;
+
+fn prepare_initial_context(planner: &Planner, raw_context: Vec<Message>) -> Vec<Message> {
+    let mut context = planner.filter_tool_duplicates(&raw_context);
+    context = planner.filter_closed_tool_cycles(&context);
+    planner.trim_stale_user_turns(&context)
+}
+
+fn prepare_iteration_context(planner: &Planner, messages: &[Message]) -> Vec<Message> {
+    let mut filtered = planner.filter_tool_duplicates(messages);
+    filtered = planner.filter_closed_tool_cycles(&filtered);
+    filtered = planner.compact_memory_updates(&filtered);
+    planner.compact_context(&filtered)
+}
+
 pub struct AgentLoop<'a> {
     memory: MemoryBridge<'a>,
     planner: Planner,
@@ -27,9 +42,7 @@ impl<'a> AgentLoop<'a> {
 
         // 1. Recover memory and filter stale tool results
         let raw_context = self.memory.fetch_context(10)?;
-        let context = self.planner.filter_tool_duplicates(&raw_context);
-        let context = self.planner.filter_closed_tool_cycles(&context);
-        let context = self.planner.trim_stale_user_turns(&context);
+        let context = prepare_initial_context(&self.planner, raw_context);
 
         // Save initial user message to db immediately
         self.memory.save_message(&incoming_msg)?;
@@ -40,17 +53,13 @@ impl<'a> AgentLoop<'a> {
         active_messages.push(incoming_msg.clone());
 
         let mut iterations = 0;
-        let max_iterations = 4;
 
-        while iterations < max_iterations {
+        while iterations < MAX_LOOP_ITERATIONS {
             iterations += 1;
-            info!("Loop iteration {}/{}", iterations, max_iterations);
+            info!("Loop iteration {}/{}", iterations, MAX_LOOP_ITERATIONS);
 
             // Filter stale tool duplicates before LLM call
-            active_messages = self.planner.filter_tool_duplicates(&active_messages);
-            active_messages = self.planner.filter_closed_tool_cycles(&active_messages);
-            active_messages = self.planner.compact_memory_updates(&active_messages);
-            active_messages = self.planner.compact_context(&active_messages);
+            active_messages = prepare_iteration_context(&self.planner, &active_messages);
 
             // 4-6. Query LLM, detect, execute
             let step_result = self
@@ -111,7 +120,7 @@ impl<'a> AgentLoop<'a> {
 
         Err(anyhow!(
             "Agent loop max iterations ({}) reached without final resolution",
-            max_iterations
+            MAX_LOOP_ITERATIONS
         ))
     }
 }

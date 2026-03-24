@@ -14,6 +14,11 @@ impl Planner {
         Self
     }
 
+    fn is_tool_result(msg: &Message) -> bool {
+        msg.role == crate::domain::message::Role::Tool
+            && msg.content.contains("Tool result available:")
+    }
+
     pub fn build_system_prompt(&self) -> String {
         SYSTEM_PROMPT_TEMPLATE
             .replace("{identity_rules}", IDENTITY_RULES.trim())
@@ -132,9 +137,7 @@ impl Planner {
 
         let last_user_idx = user_indices.last().copied();
 
-        let has_tool_result = messages
-            .iter()
-            .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
+        let has_tool_result = messages.iter().any(Self::is_tool_result);
 
         let mut result = Vec::new();
         let mut i = 0;

@@ -107,6 +107,16 @@ impl<'a> Executor<'a> {
         false
     }
 
+    fn extract_assistant_text(response: &str) -> String {
+        response
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("TOOL:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string()
+    }
+
     /// Evaluates messages with strict execution order:
     /// A. Extract current user message
     /// B. Skill (if factual fragment exists)
@@ -266,7 +276,7 @@ impl<'a> Executor<'a> {
             debug!("  Context [{}] {:?}: {}", i + 1, msg.role, msg.content);
         }
 
-        let has_fresh_tool_result = messages
+        let tool_blocked = messages
             .iter()
             .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
 
@@ -275,14 +285,8 @@ impl<'a> Executor<'a> {
 
         let tool_call = self.registry.parse_tool_call(&response_text);
 
-        if has_fresh_tool_result && tool_call.is_some() {
-            let text_without_tool = response_text
-                .lines()
-                .filter(|line| !line.trim_start().starts_with("TOOL:"))
-                .collect::<Vec<_>>()
-                .join("\n")
-                .trim()
-                .to_string();
+        if tool_blocked && tool_call.is_some() {
+            let text_without_tool = Self::extract_assistant_text(&response_text);
 
             return Ok(StepResult::new(
                 vec![Message::new(Role::Assistant, text_without_tool)],
@@ -302,13 +306,7 @@ impl<'a> Executor<'a> {
                     "Tool '{}' already executed in previous turn - blocking duplicate",
                     tool_call.name
                 );
-                let assistant_content = response_text
-                    .lines()
-                    .filter(|line| !line.trim_start().starts_with("TOOL:"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .trim()
-                    .to_string();
+                let assistant_content = Self::extract_assistant_text(&response_text);
 
                 return Ok(StepResult::new(
                     vec![Message::new(Role::Assistant, assistant_content)],
