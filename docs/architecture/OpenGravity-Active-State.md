@@ -10,7 +10,16 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 4 — Executor Hardening
+Phase 6 — Provider Abstraction
+
+---
+
+# Phase status
+
+* Phase 3: cerrada
+* Phase 4: cerrada
+* Phase 5: cerrada
+* Phase 6: activa
 
 ---
 
@@ -54,7 +63,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Consolidar invariantes del executor antes de expandir features.
+Separar provider del core sin alterar invariantes del executor.
 
 ---
 
@@ -62,11 +71,10 @@ Consolidar invariantes del executor antes de expandir features.
 
 Se permite:
 
-* hardening del executor
-* control fino de iteraciones
-* duplicate prevention correcta
-* freshness policy explícita
-* cleanup estructural menor
+* provider boundary mínimo
+* extracción controlada de provider logic
+* mantener executor intacto
+* cleanup estructural menor sin drift semántico
 
 ---
 
@@ -74,11 +82,11 @@ Se permite:
 
 No abrir:
 
-* nuevas skills
-* provider abstraction
 * memory semantic redesign
+* nuevas abstractions fuera de provider boundary
+* refactor masivo cross-module
 
-hasta cerrar invariantes de Phase 4.
+hasta estabilizar provider boundary mínimo
 
 ---
 
@@ -99,5 +107,5 @@ Debe confirmarse:
 Antes de proponer cambios:
 
 1 identificar módulo exacto afectado
-2 verificar si pertenece a Phase 4
+2 verificar si pertenece a Phase 6
 3 evitar expansión lateral innecesaria
