@@ -116,6 +116,68 @@ impl Planner {
         result
     }
 
+    pub fn trim_stale_user_turns(&self, messages: &[Message]) -> Vec<Message> {
+        use crate::domain::message::Role;
+
+        if messages.is_empty() {
+            return Vec::new();
+        }
+
+        let user_indices: Vec<usize> = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.role == Role::User)
+            .map(|(i, _)| i)
+            .collect();
+
+        let last_user_idx = user_indices.last().copied();
+
+        let has_tool_result = messages
+            .iter()
+            .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
+
+        let mut result = Vec::new();
+        let mut i = 0;
+
+        while i < messages.len() {
+            let msg = &messages[i];
+
+            if msg.role == Role::System
+                && (msg.content.starts_with("MEMORY_SET:")
+                    || msg.content.starts_with("MEMORY_UPDATE:")
+                    || msg.content.starts_with("MEMORY_DELETE:"))
+            {
+                result.push(msg.clone());
+                i += 1;
+                continue;
+            }
+
+            if has_tool_result {
+                result.push(msg.clone());
+                i += 1;
+                continue;
+            }
+
+            if msg.role == Role::User {
+                if Some(i) == last_user_idx {
+                    result.push(msg.clone());
+                }
+                i += 1;
+                continue;
+            }
+
+            if msg.role != Role::User {
+                result.push(msg.clone());
+                i += 1;
+                continue;
+            }
+
+            i += 1;
+        }
+
+        result
+    }
+
     fn extract_tool_name_from_result(&self, content: &str) -> Option<String> {
         if content.contains("get_current_time") {
             Some("get_current_time".to_string())
@@ -722,6 +784,130 @@ mod tests {
         assert!(
             filtered[0].content.contains("color"),
             "Should be the memory fact message"
+        );
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_keeps_only_latest() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "old message 1"),
+            Message::new(crate::domain::message::Role::User, "old message 2"),
+            Message::new(crate::domain::message::Role::User, "recent message"),
+            Message::new(crate::domain::message::Role::User, "latest message"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        assert_eq!(trimmed.len(), 1);
+        assert!(trimmed.iter().any(|m| m.content.contains("latest")));
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_keeps_tool_cycle() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "old question"),
+            Message::new(crate::domain::message::Role::User, "dime la hora"),
+            Message::new(
+                crate::domain::message::Role::Tool,
+                "Tool result available: 12:00",
+            ),
+            Message::new(crate::domain::message::Role::Assistant, "Son las 12:00"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        assert!(
+            trimmed.len() >= 2,
+            "Should keep latest user + tool result + assistant"
+        );
+        assert!(trimmed.iter().any(|m| m.content.contains("hora")));
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_preserves_memory() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "old"),
+            Message::new(
+                crate::domain::message::Role::System,
+                "MEMORY_SET:color=azul",
+            ),
+            Message::new(crate::domain::message::Role::User, "recent"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        let has_memory = trimmed.iter().any(|m| m.content.contains("MEMORY_SET:"));
+        assert!(has_memory, "Memory should be preserved");
+        assert!(trimmed.len() <= 2, "Should keep memory + only latest user");
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_preserves_assistant() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "old"),
+            Message::new(crate::domain::message::Role::Assistant, "response"),
+            Message::new(crate::domain::message::Role::User, "recent"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        let has_assistant = trimmed
+            .iter()
+            .any(|m| m.role == crate::domain::message::Role::Assistant);
+        assert!(has_assistant, "Assistant should be preserved");
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_only_latest_question() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(
+                crate::domain::message::Role::User,
+                "cual es mi comida favorita?",
+            ),
+            Message::new(crate::domain::message::Role::User, "decime la hora"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        assert_eq!(trimmed.len(), 1);
+        assert!(trimmed[0].content.contains("hora"));
+    }
+
+    #[test]
+    fn test_trim_stale_user_turns_memory_preserves_only_latest() {
+        let planner = Planner::new();
+        let messages = vec![
+            Message::new(crate::domain::message::Role::User, "mi color es azul"),
+            Message::new(
+                crate::domain::message::Role::System,
+                "MEMORY_SET:favorite_color=azul",
+            ),
+            Message::new(
+                crate::domain::message::Role::User,
+                "cual es mi color favorito?",
+            ),
+            Message::new(
+                crate::domain::message::Role::User,
+                "cual es mi color favorito?",
+            ),
+            Message::new(crate::domain::message::Role::User, "decime la hora"),
+        ];
+        let trimmed = planner.trim_stale_user_turns(&messages);
+
+        let has_memory = trimmed.iter().any(|m| m.content.contains("MEMORY_SET:"));
+        let has_latest = trimmed
+            .iter()
+            .any(|m| m.role == crate::domain::message::Role::User && m.content.contains("hora"));
+        let duplicate_count = trimmed
+            .iter()
+            .filter(|m| m.content.contains("color"))
+            .count();
+
+        assert!(has_memory, "Memory should be preserved");
+        assert!(has_latest, "Latest user should be preserved");
+        assert!(
+            duplicate_count <= 1,
+            "Duplicate old questions should be trimmed"
         );
     }
 }

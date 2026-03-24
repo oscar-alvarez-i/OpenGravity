@@ -29,6 +29,7 @@ impl<'a> AgentLoop<'a> {
         let raw_context = self.memory.fetch_context(10)?;
         let context = self.planner.filter_tool_duplicates(&raw_context);
         let context = self.planner.filter_closed_tool_cycles(&context);
+        let context = self.planner.trim_stale_user_turns(&context);
 
         // Save initial user message to db immediately
         self.memory.save_message(&incoming_msg)?;
@@ -237,13 +238,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_agent_loop_max_iterations() {
+    async fn test_agent_loop_terminates_with_tool_block() {
         let db = Db::new(":memory:").unwrap();
         let memory = MemoryBridge::new(&db, "user");
         let planner = Planner::new();
 
         let mut groq = MockLlmProvider::new();
-        // AlwaysFresh tool never hits duplicate prevention, so always re-executes
         groq.expect_generate_response()
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
@@ -257,10 +257,11 @@ mod tests {
         let res = agent_loop
             .run(Message::new(crate::domain::message::Role::User, "time?"))
             .await;
-        // get_current_time is AlwaysFresh, never blocked by duplicate prevention
-        // Loop keeps re-executing until max iterations
-        assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("max iterations"));
+
+        assert!(
+            res.is_ok(),
+            "Should terminate after tool result blocks second call"
+        );
     }
 
     #[tokio::test]

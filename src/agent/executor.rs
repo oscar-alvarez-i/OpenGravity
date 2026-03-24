@@ -265,11 +265,33 @@ impl<'a> Executor<'a> {
         for (i, msg) in messages.iter().enumerate() {
             debug!("  Context [{}] {:?}: {}", i + 1, msg.role, msg.content);
         }
+
+        let has_fresh_tool_result = messages
+            .iter()
+            .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
+
         let response_text = self.llm.generate(system_prompt, messages).await?;
         debug!("Raw LLM response: {}", response_text);
 
+        let tool_call = self.registry.parse_tool_call(&response_text);
+
+        if has_fresh_tool_result && tool_call.is_some() {
+            let text_without_tool = response_text
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("TOOL:"))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+
+            return Ok(StepResult::new(
+                vec![Message::new(Role::Assistant, text_without_tool)],
+                false,
+            ));
+        }
+
         // F. TOOL EXECUTION
-        if let Some(tool_call) = self.registry.parse_tool_call(&response_text) {
+        if let Some(tool_call) = tool_call {
             info!(
                 "Tool call detected: {} with input: '{}'",
                 tool_call.name, tool_call.input
@@ -450,11 +472,11 @@ mod tests {
         let result = executor.execute_step("sys", &messages).await.unwrap();
 
         assert!(
-            result.should_continue,
-            "get_current_time AlwaysFresh should always execute"
+            !result.should_continue,
+            "Same-turn tool call after fresh tool result should be blocked"
         );
         assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Tool);
+        assert_eq!(result.messages[0].role, Role::Assistant);
     }
 
     #[tokio::test]
@@ -924,8 +946,8 @@ mod tests {
 
         let result = executor.execute_step("sys", &messages).await.unwrap();
 
-        assert!(result.should_continue);
+        assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Tool);
+        assert_eq!(result.messages[0].role, Role::Assistant);
     }
 }
