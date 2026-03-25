@@ -139,6 +139,8 @@ Persistir facts útiles de largo plazo.
 
 No persistir transient user requests.
 
+Facts equivalentes deben actualizarse semánticamente cuando corresponda.
+
 ---
 
 # LLM policy

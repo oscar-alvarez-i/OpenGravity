@@ -93,16 +93,23 @@ Primero debe eliminarse cualquier dependencia de orden accidental de HashMap ant
 
 ---
 
-# Phase 6 — Provider Abstraction
+PHASE 6 — Provider Abstraction
+Status: CLOSED
 
-## Objetivo
+Coverage reached: 87.25%
+Total tests: 187
+Provider adapters covered:
+✓ groq
+✓ openrouter
+✓ fallback paths
+✓ network and HTTP error paths
 
-Separar provider del core.
-
-## Acceptance
-
-* provider intercambiable
-* executor intacto
+Acceptance:
+✓ Orchestrator depends only on trait objects
+✓ Concrete provider names removed from orchestrator core
+✓ Sequential fallback preserved
+✓ Full suite green
+✓ Coverage >=87%
 
 ---
 
@@ -110,12 +117,14 @@ Separar provider del core.
 
 ## Objetivo
 
-Resolver overwrite semántico real.
+Resolver persistencia semántica correcta de facts equivalentes.
 
 ## Acceptance
 
-* update correcto
+* overwrite correcto entre facts equivalentes
+* no duplicación semántica
 * conflict resolution explícita
+* tests de actualización persistente
 
 ---
 

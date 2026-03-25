@@ -10,8 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 6 — Provider Abstraction
-
+Phase 7 — Advanced Memory Semantics
 ---
 
 # Phase status
@@ -19,13 +18,10 @@ Phase 6 — Provider Abstraction
 * Phase 3: cerrada
 * Phase 4: cerrada
 * Phase 5: cerrada
-* Phase 6: activa
+* Phase 6: cerrada
+* Phase 7: activa
 
 ---
-
-# Phase 3 estado real
-
-Phase 3 funcionalmente cerrada pero con hardening inmediato necesario.
 
 ## Confirmado estable
 
@@ -59,11 +55,9 @@ Debe ejecutar fresh siempre.
 
 No reutilizar resultado stale.
 
----
-
 # Objetivo inmediato de trabajo
 
-Separar provider del core sin alterar invariantes del executor.
+Resolver semántica real de memoria persistente.
 
 ---
 
@@ -71,10 +65,10 @@ Separar provider del core sin alterar invariantes del executor.
 
 Se permite:
 
-* provider boundary mínimo
-* extracción controlada de provider logic
-* mantener executor intacto
-* cleanup estructural menor sin drift semántico
+* overwrite semántico explícito
+* conflict resolution mínima
+* update controlado de facts persistentes
+* tests semánticos por provider y memoria
 
 ---
 
@@ -82,11 +76,11 @@ Se permite:
 
 No abrir:
 
-* memory semantic redesign
-* nuevas abstractions fuera de provider boundary
-* refactor masivo cross-module
+* context compression
+* planner expansion
+* refactor estructural amplio
 
-hasta estabilizar provider boundary mínimo
+hasta estabilizar semántica de memoria
 
 ---
 
@@ -108,4 +102,4 @@ Antes de proponer cambios:
 
 1 identificar módulo exacto afectado
 2 verificar si pertenece a Phase 6
-3 evitar expansión lateral innecesaria
+3 validar primero si el cambio pertenece a memoria semántica real
