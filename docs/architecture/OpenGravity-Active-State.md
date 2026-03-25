@@ -10,7 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 7 — Advanced Memory Semantics
+Phase 8 — Context Compression
 ---
 
 # Phase status
@@ -19,13 +19,15 @@ Phase 7 — Advanced Memory Semantics
 * Phase 4: cerrada
 * Phase 5: cerrada
 * Phase 6: cerrada
-* Phase 7: activa
+* Phase 7: cerrada
+* Phase 8: activa
 
 ---
 
 ## Confirmado estable
 
 * memory extraction activa
+* semantic overwrite de facts implementado
 * planner multi-step activo
 * pending_plan funcional
 * SQLite persistencia estable

@@ -114,6 +114,7 @@ Acceptance:
 ---
 
 # Phase 7 — Advanced Memory Semantics
+Status: CLOSED
 
 ## Objetivo
 
@@ -121,10 +122,16 @@ Resolver persistencia semántica correcta de facts equivalentes.
 
 ## Acceptance
 
-* overwrite correcto entre facts equivalentes
-* no duplicación semántica
-* conflict resolution explícita
-* tests de actualización persistente
+* overwrite correcto entre facts equivalentes ✓
+* no duplicación semántica ✓
+* conflict resolution explícita ✓
+* tests de actualización persistente ✓
+
+Implementation:
+* find_memory_by_key y update_memory_by_key en Db layer
+* save_memory_update ahora verifica fact_key existente antes de persistir
+* last-write-wins policy
+* SQL LIKE pattern corregido para evitar prefix collision
 
 ---
 

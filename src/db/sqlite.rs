@@ -1,7 +1,7 @@
 use super::schema::{CREATE_MEMORIES_TABLE, INDEX_MEMORIES_USER_ID};
 use crate::domain::message::{Message, Role};
 use chrono::Utc;
-use rusqlite::{params, Connection, Result as SqliteResult};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
 use std::sync::Mutex;
 
 pub struct Db {
@@ -64,6 +64,41 @@ impl Db {
         memories.reverse();
 
         Ok(memories)
+    }
+
+    pub fn find_memory_by_key(
+        &self,
+        user_id: &str,
+        fact_key: &str,
+    ) -> SqliteResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let pattern_set = format!("%MEMORY_SET:{}=%", fact_key);
+        let pattern_update = format!("%MEMORY_UPDATE:{}=%", fact_key);
+        let mut stmt = conn.prepare(
+            "SELECT content FROM memories WHERE user_id = ?1 AND (content LIKE ?2 OR content LIKE ?3) LIMIT 1",
+        )?;
+        let result = stmt
+            .query_row(params![user_id, pattern_set, pattern_update], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        Ok(result)
+    }
+
+    pub fn update_memory_by_key(
+        &self,
+        user_id: &str,
+        fact_key: &str,
+        new_content: &str,
+    ) -> SqliteResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        let pattern_set = format!("%MEMORY_SET:{}=%", fact_key);
+        let pattern_update = format!("%MEMORY_UPDATE:{}=%", fact_key);
+        let created_at = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE memories SET content = ?1, created_at = ?2 WHERE user_id = ?3 AND (content LIKE ?4 OR content LIKE ?5)",
+            params![new_content, created_at, user_id, pattern_set, pattern_update],
+        )
     }
 
     #[cfg(test)]

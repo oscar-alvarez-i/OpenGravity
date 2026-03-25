@@ -141,6 +141,16 @@ No persistir transient user requests.
 
 Facts equivalentes deben actualizarse semánticamente cuando corresponda.
 
+### Semantic overwrite
+
+Cuando el mismo fact_key se emite nuevamente (ej: "mi color favorito es verde" reingresado):
+
+* Se detecta fact_key existente en storage
+* Se actualiza el valor existente (last-write-wins)
+* No se crea duplicado
+
+Implementación: save_memory_before_update verifica fact_key antes de INSERT/UPDATE.
+
 ---
 
 # LLM policy
