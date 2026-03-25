@@ -371,7 +371,7 @@ mod tests {
             });
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -399,7 +399,7 @@ mod tests {
             });
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -428,7 +428,7 @@ mod tests {
         });
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -457,7 +457,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -486,7 +486,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -512,7 +512,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("response".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -535,7 +535,7 @@ mod tests {
         let mock_groq = MockLlmProvider::new();
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -568,7 +568,7 @@ mod tests {
         let mock_groq = MockLlmProvider::new();
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -605,7 +605,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("La hora actual es las 3pm".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -631,7 +631,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -653,7 +653,7 @@ mod tests {
         let mock_groq = MockLlmProvider::new();
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -680,7 +680,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("LLM response".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -700,7 +700,7 @@ mod tests {
         let mock_groq = MockLlmProvider::new();
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -731,7 +731,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -755,7 +755,7 @@ mod tests {
         let mock_groq = MockLlmProvider::new();
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -785,7 +785,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:nonexistent_tool".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -834,7 +834,7 @@ mod tests {
 
         let mock_groq = MockLlmProvider::new();
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
@@ -898,7 +898,7 @@ mod tests {
 
         let mock_groq = MockLlmProvider::new();
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
@@ -932,7 +932,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Final".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
@@ -959,7 +959,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);

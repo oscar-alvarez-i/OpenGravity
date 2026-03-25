@@ -46,7 +46,7 @@ mod integration_tests {
             .returning(|_, _| Box::pin(async { Ok("The time is 12:00 UTC.".to_string()) }));
 
         let mock_or = MockLlmProvider::new(); // OpenRouter not used here
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
 
         let memory = MemoryBridge::new(&db, "test_user");
         let agent_planner = Planner::new();
@@ -82,7 +82,7 @@ mod integration_tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
         let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(mock_groq), Box::new(mock_or));
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
 
         let memory = MemoryBridge::new(&db, "test_user");
         let agent_planner = Planner::new();

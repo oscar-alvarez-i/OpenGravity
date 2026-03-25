@@ -202,4 +202,35 @@ mod tests {
         let res = client.generate_response("sys", &[]).await;
         assert!(res.is_err());
     }
+
+    #[tokio::test]
+    async fn test_openrouter_network_error() {
+        let client =
+            OpenRouterClient::new(SecretString::new("sk-123".to_string()), "test".to_string())
+                .with_base_url("invalid-url".to_string());
+
+        let res = client.generate_response("sys", &[]).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_openrouter_http_400() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(400))
+            .mount(&mock_server)
+            .await;
+
+        let client =
+            OpenRouterClient::new(SecretString::new("sk-123".to_string()), "test".to_string())
+                .with_base_url(format!("{}/chat", mock_server.uri()));
+
+        let res = client.generate_response("sys", &[]).await;
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("OpenRouter HTTP error: 400 Bad Request"));
+    }
 }

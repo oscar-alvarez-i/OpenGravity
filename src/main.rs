@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         config.openrouter_api_key,
         config.openrouter_model,
     ));
-    let llm_orchestrator = Arc::new(LlmOrchestrator::new(groq, openrouter));
+    let llm_orchestrator = Arc::new(LlmOrchestrator::new(vec![groq, openrouter]));
 
     // 6. Setup Tools Registry
     let registry = Arc::new(Registry::new());

@@ -190,7 +190,7 @@ mod tests {
         let db = Arc::new(Db::new(":memory:").unwrap());
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = Arc::new(LlmOrchestrator::new(groq, or));
+        let llm = Arc::new(LlmOrchestrator::new(vec![groq, or]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1])); // Only user 1 allowed
 
@@ -215,7 +215,7 @@ mod tests {
         let db = Arc::new(Db::new(":memory:").unwrap());
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = Arc::new(LlmOrchestrator::new(groq, or));
+        let llm = Arc::new(LlmOrchestrator::new(vec![groq, or]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -248,7 +248,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Answer".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = Arc::new(LlmOrchestrator::new(Box::new(groq), Box::new(or)));
+        let llm = Arc::new(LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -272,7 +272,7 @@ mod tests {
         let db = Arc::new(Db::new(":memory:").unwrap());
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = Arc::new(LlmOrchestrator::new(groq, or));
+        let llm = Arc::new(LlmOrchestrator::new(vec![groq, or]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -333,7 +333,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("I am an AI assistant.".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = Arc::new(LlmOrchestrator::new(Box::new(groq), Box::new(or)));
+        let llm = Arc::new(LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -367,7 +367,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Err(anyhow::anyhow!("LLM down")) }));
 
         let or = MockLlmProvider::new();
-        let llm = Arc::new(LlmOrchestrator::new(Box::new(groq), Box::new(or)));
+        let llm = Arc::new(LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -415,7 +415,7 @@ mod tests {
             });
 
         let or = MockLlmProvider::new();
-        let llm = Arc::new(LlmOrchestrator::new(Box::new(groq), Box::new(or)));
+        let llm = Arc::new(LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 
@@ -447,7 +447,7 @@ mod tests {
         // No LLM calls expected
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = Arc::new(LlmOrchestrator::new(groq, or));
+        let llm = Arc::new(LlmOrchestrator::new(vec![groq, or]));
         let registry = Arc::new(Registry::new());
         let whitelist = Arc::new(Whitelist::new(vec![1]));
 

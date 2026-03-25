@@ -144,7 +144,7 @@ mod tests {
         let agent_planner = Planner::new();
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = LlmOrchestrator::new(groq, or);
+        let llm = LlmOrchestrator::new(vec![groq, or]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -171,7 +171,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Err(anyhow!("LLM error")) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -199,7 +199,7 @@ mod tests {
         let agent_planner = Planner::new();
         let groq = Box::new(MockLlmProvider::new());
         let or = Box::new(MockLlmProvider::new());
-        let llm = LlmOrchestrator::new(groq, or);
+        let llm = LlmOrchestrator::new(vec![groq, or]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -232,7 +232,7 @@ mod tests {
             });
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -257,7 +257,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -287,7 +287,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Final answer".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -318,7 +318,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Final Answer".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -344,7 +344,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Final answer".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -371,7 +371,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok("Done".to_string()) }));
 
         let or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(Box::new(groq), Box::new(or));
+        let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
         let executor = Executor::new(&llm, &registry, &skill_registry);

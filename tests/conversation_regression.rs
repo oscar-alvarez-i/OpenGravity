@@ -62,10 +62,10 @@ async fn test_tool_single_execution_finalizes() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("The time is 12:00.".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
     let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -112,10 +112,10 @@ async fn test_tool_repeated_same_tool_hits_safe_boundary() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let memory = MemoryBridge::new(&db, "test_user");
     let planner = Planner::new();
     let executor = Executor::new(&llm, &registry, &skill_registry);
@@ -159,10 +159,10 @@ async fn test_tool_reasoning_not_persisted() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("Done.".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let memory = MemoryBridge::new(&db, "test_user");
     let mut agent_loop = AgentLoop::new(
         memory,
@@ -221,10 +221,10 @@ async fn test_active_context_excludes_reasoning_after_tool() -> Result<()> {
             }
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let mut agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
@@ -275,10 +275,10 @@ async fn test_memory_short_fact_recall() -> Result<()> {
             Ok("Tu color favorito es azul.".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
 
     // Run Turn 1
     {
@@ -350,10 +350,10 @@ async fn test_memory_with_tool_interleaving() -> Result<()> {
             Ok("Tu color es verde.".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let planner = Planner::new();
 
     // Turn 1
@@ -452,10 +452,10 @@ async fn test_tool_context_exact_order_after_two_turns() -> Result<()> {
             Ok("Final.".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let planner = Planner::new();
     let _skill_planner = SkillPlanner::new();
 
@@ -519,10 +519,10 @@ async fn test_time_tool_not_reuses_previous_result() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("La hora es B.".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let planner = Planner::new();
     let _skill_planner = SkillPlanner::new();
 
@@ -580,10 +580,10 @@ async fn test_tool_result_only_once_in_context() -> Result<()> {
             Ok("12:00".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let _skill_planner = SkillPlanner::new();
     let mut agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -632,10 +632,10 @@ async fn test_tool_after_long_context() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("12:00".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let _skill_planner = SkillPlanner::new();
     let mut agent_loop = AgentLoop::new(
         memory,
@@ -670,10 +670,10 @@ async fn test_tool_split_flow_v2() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("Final.".to_string()));
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
     let _skill_planner = SkillPlanner::new();
     let mut agent_loop = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -764,10 +764,10 @@ async fn probe_memory_overwrite_tool_recall() -> Result<()> {
             Ok("Final".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
 
     // Turn 1
     AgentLoop::new(
@@ -880,10 +880,10 @@ async fn probe_multiple_assistant_tool_alternation() -> Result<()> {
             Ok("Final".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
 
     // Turn 1
     AgentLoop::new(
@@ -964,10 +964,10 @@ async fn probe_memory_update_same_turn_followup_recall() -> Result<()> {
             Ok("Recalled".to_string())
         });
 
-    let llm = LlmOrchestrator::new(
+    let llm = LlmOrchestrator::new(vec![
         Box::new(mock_llm),
         Box::new(MockRegressionMockProvider::new()),
-    );
+    ]);
 
     // Turn 1: memory + tool
     AgentLoop::new(
