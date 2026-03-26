@@ -10,7 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 9 — Bounded Persistent Memory Retrieval (active)
+Phase 10 — Observability Layer (opening)
 
 ---
 
@@ -22,7 +22,8 @@ Phase 9 — Bounded Persistent Memory Retrieval (active)
 - Phase 6: cerrada
 - Phase 7: cerrada
 - Phase 8: cerrada
-- Phase 9: activa (bounded memory retrieval)
+- Phase 9: cerrada
+- Phase 10: opening (observability layer)
 
 ---
 
@@ -127,11 +128,17 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Preparar siguiente fase sin romper:
+Abrir tracing mínimo del executor sin alterar comportamiento:
 
-- determinismo runtime
-- semantic continuity
-- compression guarantees
+- consolidar logging existente en src/observability/mod.rs
+- agregar execution flow traces (entry/exit de cada stage)
+- agregar timing básico por step
+
+Sin modificar:
+
+- executor ordering
+- memoria retrieval
+- planner core
 
 ---
 

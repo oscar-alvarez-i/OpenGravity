@@ -168,7 +168,28 @@ Separar retrieval de conversation history vs. persistent memories con budgets de
 
 ---
 
-# Phase 10 — Plugin Architecture
+# Phase 10 — Observability Layer
+
+## Objetivo
+
+Consolidar logging y tracing existente sin alterar comportamiento runtime.
+
+## Scope permitido
+
+* src/observability/mod.rs: consolidar traces
+* execution flow traces (entry/exit cada stage)
+* timing básico por step
+* no modificar comportamiento
+
+## Acceptance
+
+* tests green
+* logging funcional
+* sin regresión funcional
+
+---
+
+# Phase 11 — Plugin Architecture
 
 ## Objetivo
 
