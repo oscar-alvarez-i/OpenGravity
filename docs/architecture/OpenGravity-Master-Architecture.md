@@ -186,6 +186,17 @@ Cuando el mismo fact_key se emite nuevamente (ej: "mi color favorito es verde" r
 
 Implementación: save_memory_before_update verifica fact_key antes de INSERT/UPDATE.
 
+### Bounded Retrieval
+
+Retrieval usa budgetes separados determinísticos:
+
+- conversation: últimos 6 mensajes (fetch_conversation_only)
+- persistent memory: scan 20 → filter MEMORY_* → take 4 (fetch_memories_only)
+
+Merge order: memories primero, luego conversation.
+
+Esta separación evita que conversation history desplace memories recientes del prompt.
+
 ---
 
 # LLM policy

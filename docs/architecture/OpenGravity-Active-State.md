@@ -10,7 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 8 — Context Compression (closed)
+Phase 9 — Bounded Persistent Memory Retrieval (active)
 
 ---
 
@@ -22,6 +22,7 @@ Phase 8 — Context Compression (closed)
 - Phase 6: cerrada
 - Phase 7: cerrada
 - Phase 8: cerrada
+- Phase 9: activa (bounded memory retrieval)
 
 ---
 
@@ -81,6 +82,36 @@ La compresión no altera ordering lógico entre:
 - system
 
 excepto remoción de estados obsoletos.
+
+---
+
+# Bounded Persistent Memory Retrieval
+
+## Problema resuelto
+
+En sesiones largas, múltiples memories persistidas podían saturar el contexto porque el límite global (10) era compartido entre conversation history y persistent memories.
+
+## Solución implementada
+
+Separación determinística de retrieval en budgetes independientes:
+
+- `fetch_conversation_only(6)` — últimos 6 mensajes de conversación
+- `fetch_memories_only(20, 4)` — scan 20 últimos registros, filtra MEMORY_*, toma 4 más recientes
+
+## Merge order
+
+Persistent memories se inyectan primero como bloque estable, luego conversation reciente:
+
+```
+[mem1, mem2, mem3, mem4, conv1, conv2, conv3, conv4, conv5, conv6]
+```
+
+## Invariante mantenida
+
+- bounded retrieval: máximo 10 items en prompt
+- prioridad estable: memories recientes primero
+- no rompe executor ordering
+- no duplica lógicamente (compact_memory_updates sigue funcionando)
 
 ---
 

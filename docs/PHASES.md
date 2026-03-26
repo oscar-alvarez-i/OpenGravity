@@ -205,6 +205,29 @@ Compression must never alter logical turn ordering.
 
 ---
 
+# Phase 9 — Bounded Persistent Memory Retrieval
+
+## Goal
+
+Provide deterministic bounded retrieval for persistent memories without interference from conversation history growth.
+
+## Main Outcomes
+
+* separate retrieval budgets: conversation (6) vs. memory (4 from scan 20)
+* scan-before-filter pattern to ensure memory availability
+* stable injection order: memories first, conversation second
+* no logical duplication (runtime deduplication preserved via compact_memory_updates)
+
+## Architectural Impact
+
+Persistent memories now have guaranteed presence in prompt regardless of conversation volume.
+
+## Main Constraint Introduced
+
+Memory retrieval must use bounded scan-then-filter pattern to avoid silent failure when conversation fills the limit.
+
+---
+
 # Future Phase Direction
 
 Likely future areas include:

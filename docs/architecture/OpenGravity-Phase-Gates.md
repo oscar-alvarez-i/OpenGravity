@@ -147,16 +147,24 @@ Reducir crecimiento de contexto.
 
 ---
 
-# Phase 9 — Multi-Intent Planning
+# Phase 9 — Bounded Persistent Memory Retrieval
 
 ## Objetivo
 
-Planner con dependencias simples.
+Separar retrieval de conversation history vs. persistent memories con budgets determinísticos.
+
+## Scope permitido
+
+* fetch_conversation_only(6) — sin MEMORY_*
+* fetch_memories_only(20, 4) — scan 20, filtra, toma 4
+* merge: memories primero, conversation después
 
 ## Acceptance
 
-* secuencia correcta
-* branching simple controlado
+* bounded retrieval: máximo 10 items
+* memories recientes guaranteed en prompt
+* no rompe executor ordering
+* tests green
 
 ---
 
