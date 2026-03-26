@@ -22,6 +22,35 @@ impl<'a> MemoryBridge<'a> {
             .map_err(Into::into)
     }
 
+    pub fn fetch_conversation_only(&self, limit: usize) -> Result<Vec<Message>> {
+        let all = self.db.fetch_latest_memories(&self.user_id, limit)?;
+        let filtered: Vec<Message> = all
+            .into_iter()
+            .filter(|m| {
+                !(m.role == Role::System
+                    && (m.content.starts_with("MEMORY_SET:")
+                        || m.content.starts_with("MEMORY_UPDATE:")
+                        || m.content.starts_with("MEMORY_DELETE:")))
+            })
+            .collect();
+        Ok(filtered)
+    }
+
+    pub fn fetch_memories_only(&self, scan_limit: usize, take: usize) -> Result<Vec<Message>> {
+        let all = self.db.fetch_latest_memories(&self.user_id, scan_limit)?;
+        let memories: Vec<Message> = all
+            .into_iter()
+            .filter(|m| {
+                m.role == Role::System
+                    && (m.content.starts_with("MEMORY_SET:")
+                        || m.content.starts_with("MEMORY_UPDATE:")
+                        || m.content.starts_with("MEMORY_DELETE:"))
+            })
+            .take(take)
+            .collect();
+        Ok(memories)
+    }
+
     pub fn save_message(&self, message: &Message) -> Result<()> {
         self.db
             .insert_memory(&self.user_id, message)

@@ -1168,8 +1168,8 @@ mod tests {
 
         assert_eq!(tool_count, 1);
 
-        assert!(
-            compressed.iter().any(|m| m.content.contains("favorite_color=azul"))
-        );
+        assert!(compressed
+            .iter()
+            .any(|m| m.content.contains("favorite_color=azul")));
     }
 }
