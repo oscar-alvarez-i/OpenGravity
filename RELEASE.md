@@ -70,6 +70,7 @@ Before release:
 * architecture boundaries remain respected
 * executor invariants preserved
 * planner and executor semantics remain aligned
+* runtime context compression preserves semantic continuity
 * no undocumented runtime shortcut added
 
 Primary references:

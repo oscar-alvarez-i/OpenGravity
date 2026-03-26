@@ -14,10 +14,10 @@ Each phase closes only when runtime behavior becomes stable enough to support th
 
 Each phase aims to:
 
-- solve one architectural layer at a time
-- avoid simultaneous redesign of multiple boundaries
-- preserve runtime continuity
-- reduce hidden complexity
+* solve one architectural layer at a time
+* avoid simultaneous redesign of multiple boundaries
+* preserve runtime continuity
+* reduce hidden complexity
 
 ---
 
@@ -29,10 +29,10 @@ Establish the first deterministic conversational runtime.
 
 ## Main Outcomes
 
-- initial Rust project structure
-- base conversation loop
-- first message handling model
-- explicit runtime ownership inside Rust
+* initial Rust project structure
+* base conversation loop
+* first message handling model
+* explicit runtime ownership inside Rust
 
 ## Architectural Impact
 
@@ -52,16 +52,16 @@ Separate response generation from execution intent.
 
 ## Main Outcomes
 
-- planner introduced
-- pending plan concept created
-- first explicit execution staging
+* planner introduced
+* pending plan concept created
+* first explicit execution staging
 
 ## Architectural Impact
 
 The runtime gained a formal distinction between:
 
-- deciding what to do
-- doing it
+* deciding what to do
+* doing it
 
 ## Main Constraint Introduced
 
@@ -77,10 +77,10 @@ Make plan execution operationally reliable.
 
 ## Main Outcomes
 
-- executor became a distinct runtime boundary
-- step-by-step execution hardened
-- tool invocation integrated into execution flow
-- memory continuation became stable enough for practical use
+* executor became a distinct runtime boundary
+* step-by-step execution hardened
+* tool invocation integrated into execution flow
+* memory continuation became stable enough for practical use
 
 ## Architectural Impact
 
@@ -100,10 +100,10 @@ Reduce semantic drift during execution and strengthen runtime safety.
 
 ## Main Outcomes
 
-- stricter step consumption behavior
-- improved tool freshness handling
-- duplicate execution prevention
-- tighter planner / executor continuity
+* stricter step consumption behavior
+* improved tool freshness handling
+* duplicate execution prevention
+* tighter planner / executor continuity
 
 ## Architectural Impact
 
@@ -113,13 +113,9 @@ Execution became less tolerant to ambiguity and more deterministic.
 
 Executor must not silently reinterpret completed intent.
 
-## Known Pressure Left Open
-
-Skill formalization remained incomplete.
-
 ---
 
-# Phase 5 — Skill Formalization (Closed)
+# Phase 5 — Skill Formalization
 
 ## Goal
 
@@ -127,26 +123,85 @@ Move repeated execution patterns into explicit reusable skills.
 
 ## Main Outcomes
 
-- skill framework with deterministic ordering
-- registry with auto-registration
-- echo skill as second working skill
-- planner context hygiene filters:
-  - filter_closed_tool_cycles: remove stale tool triplets
-  - trim_stale_user_turns: keep only latest user turn
-- executor same-turn tool blocking: prevents loop reopening
+* skill framework with deterministic ordering
+* registry with auto-registration
+* echo skill as second working skill
+* planner context hygiene filters
 
 ## Architectural Impact
 
-Skills added without weakening executor authority. Context trimming preserves determinism.
+Skills added without weakening executor authority.
 
-## Main Constraint Preserved
+## Main Constraint Introduced
 
 A skill must never become an implicit planner.
 
-## Known Limitations Remaining
+---
 
-- skill selection uses single path (first match)
-- no priority weighting system
+# Phase 6 — Semantic Memory Stabilization
+
+## Goal
+
+Stabilize explicit memory extraction and overwrite semantics.
+
+## Main Outcomes
+
+* memory extraction hardened
+* semantic overwrite introduced
+* persistent fact continuity improved
+
+## Architectural Impact
+
+Memory became a first-class runtime state instead of append-only storage.
+
+## Main Constraint Introduced
+
+Memory must preserve latest semantic truth.
+
+---
+
+# Phase 7 — Planner / Memory Continuity
+
+## Goal
+
+Strengthen continuity between memory updates, pending plan and execution.
+
+## Main Outcomes
+
+* pending_plan continuity stabilized
+* duplicate memory/tool cycles reduced
+* multi-turn continuity improved
+
+## Architectural Impact
+
+Planner and memory became less prone to divergence.
+
+## Main Constraint Introduced
+
+No stale semantic branch may reopen execution.
+
+---
+
+# Phase 8 — Context Compression
+
+## Goal
+
+Reduce runtime inflation without losing active semantic state.
+
+## Main Outcomes
+
+* consecutive tool compression
+* per-key memory compression
+* latest semantic memory preservation
+* mixed tool + memory ordering preserved
+
+## Architectural Impact
+
+Runtime context now preserves only semantically active state before model dispatch.
+
+## Main Constraint Introduced
+
+Compression must never alter logical turn ordering.
 
 ---
 
@@ -154,16 +209,10 @@ A skill must never become an implicit planner.
 
 Likely future areas include:
 
-- stronger provider abstraction
-- richer execution diagnostics
-- stricter tool identity contracts
-- expanded runtime observability
-
-Future phases should continue preserving:
-
-- explicit execution
-- bounded state transitions
-- deterministic orchestration
+* provider abstraction hardening
+* observability expansion
+* execution diagnostics
+* stronger tool contracts
 
 ---
 
@@ -171,9 +220,9 @@ Future phases should continue preserving:
 
 A phase should be updated only when:
 
-- the milestone is technically closed
-- runtime behavior has stabilized
-- architectural consequences are understood
+* the milestone is technically closed
+* runtime behavior has stabilized
+* architectural consequences are understood
 
 Do not use this document for speculative work.
 

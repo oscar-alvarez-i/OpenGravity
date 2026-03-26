@@ -122,6 +122,41 @@ deben ejecutar fresh siempre
 
 ---
 
+# Runtime Context Compression
+
+Antes de enviar contexto al modelo, executor aplica compresión semántica controlada.
+
+## Tool compression
+
+Bloques consecutivos de mensajes `Tool` conservan solo el último resultado.
+
+## Memory compression
+
+Para mensajes:
+
+* MEMORY_SET
+* MEMORY_UPDATE
+* MEMORY_DELETE
+
+se conserva solo la última ocurrencia por key.
+
+## Garantía
+
+La compresión nunca altera ordering lógico entre:
+
+* user
+* assistant
+* tool
+* system
+
+excepto remoción de estados obsoletos.
+
+## Restricción
+
+Compression no puede introducir reinterpretación semántica.
+
+---
+
 # Memory persistence
 
 Backend oficial actual:

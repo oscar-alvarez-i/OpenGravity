@@ -117,6 +117,87 @@ impl<'a> Executor<'a> {
             .to_string()
     }
 
+    fn compress_runtime_context(messages: &[Message]) -> Vec<Message> {
+        use crate::domain::message::Role;
+        use std::collections::HashMap;
+
+        if messages.is_empty() {
+            return messages.to_vec();
+        }
+
+        let mut after_tools = Vec::new();
+        let mut i = 0;
+
+        while i < messages.len() {
+            let current = &messages[i];
+
+            if current.role == Role::Tool {
+                let mut last_tool = i;
+                let mut j = i + 1;
+
+                while j < messages.len() && messages[j].role == Role::Tool {
+                    last_tool = j;
+                    j += 1;
+                }
+
+                after_tools.push(messages[last_tool].clone());
+
+                i = j;
+            } else {
+                after_tools.push(current.clone());
+                i += 1;
+            }
+        }
+
+        let mut last_memory_per_key: HashMap<String, usize> = HashMap::new();
+
+        for (idx, msg) in after_tools.iter().enumerate() {
+            if msg.role == Role::System
+                && (msg.content.starts_with("MEMORY_SET:")
+                    || msg.content.starts_with("MEMORY_UPDATE:")
+                    || msg.content.starts_with("MEMORY_DELETE:"))
+            {
+                if let Some(key) = Self::extract_memory_key(&msg.content) {
+                    last_memory_per_key.insert(key, idx);
+                }
+            }
+        }
+
+        let mut final_result = Vec::new();
+
+        for (idx, msg) in after_tools.iter().enumerate() {
+            if msg.role == Role::System
+                && (msg.content.starts_with("MEMORY_SET:")
+                    || msg.content.starts_with("MEMORY_UPDATE:")
+                    || msg.content.starts_with("MEMORY_DELETE:"))
+            {
+                if let Some(key) = Self::extract_memory_key(&msg.content) {
+                    if last_memory_per_key.get(&key) == Some(&idx) {
+                        final_result.push(msg.clone());
+                    }
+                } else {
+                    final_result.push(msg.clone());
+                }
+            } else {
+                final_result.push(msg.clone());
+            }
+        }
+
+        final_result
+    }
+
+    fn extract_memory_key(content: &str) -> Option<String> {
+        for prefix in &["MEMORY_UPDATE:", "MEMORY_SET:", "MEMORY_DELETE:"] {
+            if let Some(rest) = content.strip_prefix(prefix) {
+                if let Some(pos) = rest.find('=') {
+                    return Some(rest[..pos].to_string());
+                }
+                return Some(rest.to_string());
+            }
+        }
+        None
+    }
+
     /// Evaluates messages with strict execution order:
     /// A. Extract current user message
     /// B. Skill (if factual fragment exists)
@@ -280,7 +361,12 @@ impl<'a> Executor<'a> {
             .iter()
             .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
 
-        let response_text = self.llm.generate(system_prompt, messages).await?;
+        let compressed_messages = Self::compress_runtime_context(messages);
+
+        let response_text = self
+            .llm
+            .generate(system_prompt, &compressed_messages)
+            .await?;
         debug!("Raw LLM response: {}", response_text);
 
         let tool_call = self.registry.parse_tool_call(&response_text);
@@ -974,5 +1060,116 @@ mod tests {
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].role, Role::Assistant);
+    }
+
+    #[test]
+    fn test_compress_runtime_context_memory_same_key_keeps_last() {
+        let messages = vec![
+            Message::new(Role::User, "user1"),
+            Message::new(Role::System, "MEMORY_SET:favorite_color=verde"),
+            Message::new(Role::System, "MEMORY_SET:favorite_color=azul"),
+            Message::new(Role::User, "user2"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        let memory_count = compressed
+            .iter()
+            .filter(|m| m.role == Role::System && m.content.contains("MEMORY_"))
+            .count();
+
+        assert_eq!(memory_count, 1, "Should keep only one memory");
+        assert!(
+            compressed
+                .iter()
+                .any(|m| m.content.contains("favorite_color=azul")),
+            "Should keep latest value"
+        );
+    }
+
+    #[test]
+    fn test_compress_runtime_context_memory_different_keys_keeps_both() {
+        let messages = vec![
+            Message::new(Role::User, "user1"),
+            Message::new(Role::System, "MEMORY_SET:favorite_color=azul"),
+            Message::new(Role::System, "MEMORY_SET:occupation=engineer"),
+            Message::new(Role::User, "user2"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        let memory_count = compressed
+            .iter()
+            .filter(|m| m.role == Role::System && m.content.contains("MEMORY_"))
+            .count();
+
+        assert_eq!(memory_count, 2, "Should keep both different keys");
+    }
+
+    #[test]
+    fn test_compress_runtime_context_tool_compression_intact() {
+        let messages = vec![
+            Message::new(Role::User, "user1"),
+            Message::new(Role::Tool, "Tool result: first"),
+            Message::new(Role::Tool, "Tool result: second"),
+            Message::new(Role::User, "user2"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        let tool_count = compressed.iter().filter(|m| m.role == Role::Tool).count();
+
+        assert_eq!(tool_count, 1, "Should keep only last tool");
+        assert!(
+            compressed.iter().any(|m| m.content.contains("second")),
+            "Should keep second tool result"
+        );
+    }
+
+    #[test]
+    fn test_compress_runtime_context_memory_update_different_keys_preserved() {
+        let messages = vec![
+            Message::new(Role::User, "user1"),
+            Message::new(Role::System, "MEMORY_UPDATE:color=verde"),
+            Message::new(Role::System, "MEMORY_UPDATE:size=large"),
+            Message::new(Role::User, "user2"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        let memory_count = compressed
+            .iter()
+            .filter(|m| m.role == Role::System && m.content.starts_with("MEMORY_"))
+            .count();
+
+        assert_eq!(memory_count, 2, "Should keep both different memory updates");
+    }
+
+    #[test]
+    fn test_compress_runtime_context_mixed_tool_and_memory_order_preserved() {
+        let messages = vec![
+            Message::new(Role::User, "user1"),
+            Message::new(Role::System, "MEMORY_SET:favorite_color=verde"),
+            Message::new(Role::Tool, "Tool result: first"),
+            Message::new(Role::System, "MEMORY_SET:favorite_color=azul"),
+            Message::new(Role::User, "user2"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        let memory_count = compressed
+            .iter()
+            .filter(|m| m.role == Role::System && m.content.contains("MEMORY_"))
+            .count();
+
+        assert_eq!(memory_count, 1);
+
+        let tool_count = compressed.iter().filter(|m| m.role == Role::Tool).count();
+
+        assert_eq!(tool_count, 1);
+
+        assert!(
+            compressed.iter().any(|m| m.content.contains("favorite_color=azul"))
+        );
     }
 }

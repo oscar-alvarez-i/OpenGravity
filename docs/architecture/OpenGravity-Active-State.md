@@ -10,27 +10,29 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 8 — Context Compression
+Phase 8 — Context Compression (closed)
+
 ---
 
 # Phase status
 
-* Phase 3: cerrada
-* Phase 4: cerrada
-* Phase 5: cerrada
-* Phase 6: cerrada
-* Phase 7: cerrada
-* Phase 8: activa
+- Phase 3: cerrada
+- Phase 4: cerrada
+- Phase 5: cerrada
+- Phase 6: cerrada
+- Phase 7: cerrada
+- Phase 8: cerrada
 
 ---
 
-## Confirmado estable
+# Confirmado estable
 
-* memory extraction activa
-* semantic overwrite de facts implementado
-* planner multi-step activo
-* pending_plan funcional
-* SQLite persistencia estable
+- memory extraction activa
+- semantic overwrite de facts implementado
+- planner multi-step activo
+- pending_plan funcional
+- SQLite persistencia estable
+- runtime context compression activa
 
 ---
 
@@ -49,6 +51,39 @@ Debe producir:
 
 ---
 
+# Runtime compression activa
+
+## Reglas activas
+
+### Tool compression
+
+Bloques consecutivos de tool output conservan solo el último resultado.
+
+### Memory compression
+
+Para:
+
+- MEMORY_SET
+- MEMORY_UPDATE
+- MEMORY_DELETE
+
+se conserva solo la última ocurrencia por key.
+
+---
+
+# Garantía actual
+
+La compresión no altera ordering lógico entre:
+
+- user
+- assistant
+- tool
+- system
+
+excepto remoción de estados obsoletos.
+
+---
+
 # Restricciones activas actuales
 
 ## get_current_time
@@ -57,44 +92,27 @@ Debe ejecutar fresh siempre.
 
 No reutilizar resultado stale.
 
+---
+
 # Objetivo inmediato de trabajo
 
-Resolver semántica real de memoria persistente.
+Preparar siguiente fase sin romper:
+
+- determinismo runtime
+- semantic continuity
+- compression guarantees
 
 ---
 
-# Scope permitido actual
-
-Se permite:
-
-* overwrite semántico explícito
-* conflict resolution mínima
-* update controlado de facts persistentes
-* tests semánticos por provider y memoria
-
----
-
-# Scope no permitido actual
+# Scope no permitido inmediato
 
 No abrir:
 
-* context compression
-* planner expansion
-* refactor estructural amplio
+- refactor estructural amplio
+- planner rewrite
+- provider redesign
 
-hasta estabilizar semántica de memoria
-
----
-
-# Señales de cierre necesarias para avanzar
-
-Debe confirmarse:
-
-* max_iterations estable
-* duplicate prevention correcta
-* cacheable vs non-cacheable validado
-* runtime manual correcto
-* sin hacks temporales
+sin gate documental previo.
 
 ---
 
@@ -103,5 +121,5 @@ Debe confirmarse:
 Antes de proponer cambios:
 
 1 identificar módulo exacto afectado
-2 verificar si pertenece a Phase 6
-3 validar primero si el cambio pertenece a memoria semántica real
+2 verificar fase real actual
+3 validar impacto runtime antes de tocar arquitectura
