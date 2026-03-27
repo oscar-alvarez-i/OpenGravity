@@ -195,15 +195,26 @@ Implementation:
 ---
 
 # Phase 11 — Plugin Architecture
+Status: ACTIVE
 
 ## Objetivo
 
 Extensión externa controlada.
 
-## Acceptance
+## Implementation
 
-* plugins aislados
-* core intacto
+- ToolDefinition ahora almacena: freshness + handler (fn pointer)
+- Registry::register(name, freshness, handler) público
+- Duplicate registration retorna error explícito
+- Built-in tools protegidas contra override
+
+## Acceptance (partial)
+
+- external registration habilitado ✓
+- duplicate protection cerrada ✓
+- built-in override prevention closed ✓
+- executor no modificado ✓
+- tests green ✓
 
 ---
 

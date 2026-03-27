@@ -10,7 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase 10 — Observability Layer (closed)
 
-Phase 11 — Plugin Architecture (próxima activa)
+Phase 11 — Plugin Architecture (active)
 
 ---
 
@@ -24,7 +24,18 @@ Phase 11 — Plugin Architecture (próxima activa)
 - Phase 8: cerrada
 - Phase 9: cerrada
 - Phase 10: closed (executor observability active)
-- Phase 11: próxima (Plugin Architecture)
+- Phase 11: active (Plugin Architecture)
+
+---
+
+# ToolRegistry extensibility
+
+ToolRegistry ahora permite extensión externa controlada:
+
+- Almacena execution handlers directamente (fn pointer)
+- register(name, freshness, handler) habilita herramientas externas
+- Duplicate registration rechazada explícitamente (error, no overwrite)
+- Built-in tools (get_current_time) no pueden ser sobreescritas
 
 ---
 
@@ -133,8 +144,9 @@ No reutilizar resultado stale.
 
 Phase 11 — Plugin Architecture:
 
-- habilitar extensión externa controlada
-- mantener core intacto
+- extensión externa controlada habilitada ✓
+- ToolRegistry con register() público ✓
+- duplicate prevention activa ✓
 
 ---
 

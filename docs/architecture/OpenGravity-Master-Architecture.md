@@ -100,6 +100,16 @@ solo próximos pasos realmente ejecutables.
 
 Tool execution es determinístico.
 
+## ToolRegistry
+
+ToolRegistry es autoridad única para:
+
+- metadata de tools
+- freshness policy por tool
+- execution dispatch
+
+Executor no contiene dispatch por tool.
+
 ## Regla
 
 Las tools nunca deben ejecutarse libremente desde texto no controlado.
