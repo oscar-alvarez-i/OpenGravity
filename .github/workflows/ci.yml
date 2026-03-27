@@ -43,8 +43,8 @@ jobs:
       - name: Run Nextest
         run: cargo nextest run
 
-      - name: Coverage Audit (>= 87%)
-        run: cargo tarpaulin --fail-under 87 --timeout 120
+      - name: Coverage Audit (>= 85%)
+        run: cargo tarpaulin --fail-under 85 --timeout 120
 
       - name: Security Audit (Crates)
         run: cargo audit

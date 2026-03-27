@@ -1226,4 +1226,404 @@ mod tests {
             .iter()
             .any(|m| m.content.contains("favorite_color=azul")));
     }
+
+    #[tokio::test]
+    async fn test_executor_tool_blocked_path() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok("I will call get_current_time\nTOOL:get_current_time".to_string())
+                })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "what time is it"),
+            Message::new(Role::Tool, "Tool result available: UTC 10:00".to_string()),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue, "Tool blocked should not continue");
+        assert_eq!(result.messages.len(), 1, "Should return assistant message");
+        assert_eq!(
+            result.messages[0].role,
+            Role::Assistant,
+            "Should be assistant message"
+        );
+        assert!(
+            !result.messages[0].content.contains("TOOL:"),
+            "Tool call should be stripped"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_duplicate_tool_skip_path() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![
+            Message::new(Role::User, "weather?"),
+            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
+        ];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(
+            !result.should_continue,
+            "Duplicate tool should not continue"
+        );
+        assert_eq!(result.messages.len(), 1, "Should return assistant message");
+        assert_eq!(
+            result.messages[0].role,
+            Role::Assistant,
+            "Should be assistant"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_fallback_no_tool_call() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("Hello, how can I help you?".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "hello")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue, "Fallback should not continue");
+        assert_eq!(result.messages.len(), 1, "Should return assistant message");
+        assert_eq!(result.messages[0].role, Role::Assistant);
+        assert_eq!(result.messages[0].content, "Hello, how can I help you?");
+    }
+
+    #[tokio::test]
+    async fn test_executor_llm_with_tool_call_executed() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "what time")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue, "Tool execution should continue");
+        assert_eq!(result.messages.len(), 1, "Should return tool message");
+        assert_eq!(
+            result.messages[0].role,
+            Role::Tool,
+            "Should be tool message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_planner_with_pending_plan_direct() {
+        let mock_groq = MockLlmProvider::new();
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![
+                PlanStep::Direct("first".to_string()),
+                PlanStep::Direct("second".to_string()),
+                PlanStep::Direct("third".to_string()),
+            ],
+        });
+
+        let messages = vec![Message::new(Role::User, "go")];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert!(
+            result.messages.is_empty(),
+            "Direct step should not produce messages"
+        );
+        assert!(executor.has_pending_plan(), "Should have remaining plan");
+
+        let remaining = executor.take_pending_plan().unwrap();
+        assert_eq!(remaining.len(), 2, "Should have 2 remaining steps");
+    }
+
+    #[test]
+    fn test_compress_runtime_context_empty_input() {
+        let messages: Vec<Message> = vec![];
+        let compressed = Executor::compress_runtime_context(&messages);
+        assert!(
+            compressed.is_empty(),
+            "Empty input should return empty output"
+        );
+    }
+
+    #[test]
+    fn test_compress_runtime_context_only_tools_keeps_last() {
+        let messages = vec![
+            Message::new(Role::Tool, "Tool result: first"),
+            Message::new(Role::Tool, "Tool result: second"),
+            Message::new(Role::Tool, "Tool result: third"),
+        ];
+
+        let compressed = Executor::compress_runtime_context(&messages);
+
+        assert_eq!(compressed.len(), 1, "Should keep only last tool");
+        assert!(
+            compressed[0].content.contains("third"),
+            "Should be last tool result"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_pending_plan_sets_remaining_steps() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![
+                PlanStep::Tool("get_current_time".to_string()),
+                PlanStep::Direct("continue".to_string()),
+            ],
+        });
+
+        let messages = vec![Message::new(Role::User, "go")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(executor.has_pending_plan());
+    }
+
+    #[test]
+    fn test_extract_memory_key_parses_correctly() {
+        let key1 = Executor::extract_memory_key("MEMORY_SET:color=azul");
+        assert_eq!(key1, Some("color".to_string()));
+
+        let key2 = Executor::extract_memory_key("MEMORY_UPDATE:size=large");
+        assert_eq!(key2, Some("size".to_string()));
+
+        let key3 = Executor::extract_memory_key("MEMORY_DELETE:temp");
+        assert_eq!(key3, Some("temp".to_string()));
+
+        let key4 = Executor::extract_memory_key("MEMORY_SET:nokeyequals");
+        assert_eq!(key4, Some("nokeyequals".to_string()));
+
+        let key5 = Executor::extract_memory_key("USER:message");
+        assert_eq!(key5, None);
+    }
+
+    #[tokio::test]
+    async fn test_executor_tool_execution_error_path() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![PlanStep::Tool("nonexistent_tool".to_string())],
+        });
+
+        let messages = vec![Message::new(Role::User, "test")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(
+            result.messages[0].content.contains("Tool execution error"),
+            "Should contain error message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_should_skip_duplicate_when_fresh() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let should_skip = executor.should_skip_duplicate(
+            "get_current_time",
+            Some(&Message::new(
+                Role::Tool,
+                "Tool result available: UTC 10:00".to_string(),
+            )),
+        );
+
+        assert!(
+            !should_skip,
+            "Non-cacheable tool should not be skipped even if result exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_llm_response_with_assistant_reasoning() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok("Let me think about that.\nTOOL:get_current_time".to_string())
+                })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "what time")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_executor_skill_with_content_no_pending_plan() {
+        #[derive(Debug)]
+        struct SimpleSkill;
+        #[async_trait::async_trait]
+        impl crate::skills::r#trait::Skill for SimpleSkill {
+            fn name(&self) -> &str {
+                "simple_skill"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn side_effects(&self) -> crate::skills::r#trait::SideEffects {
+                crate::skills::r#trait::SideEffects::none()
+            }
+            fn trigger(&self) -> crate::skills::r#trait::TriggerType {
+                crate::skills::r#trait::TriggerType::OnPattern("hello")
+            }
+            async fn execute(
+                &self,
+                _context: &[Message],
+                _user_message: &Message,
+            ) -> anyhow::Result<crate::skills::r#trait::SkillOutput> {
+                Ok(crate::skills::r#trait::SkillOutput::done("Hello back!"))
+            }
+        }
+
+        let mut skill_registry = SkillRegistry::new();
+        skill_registry.register(Box::new(SimpleSkill));
+
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "hello world")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
+    }
+
+    #[test]
+    fn test_executor_extract_assistant_text_strips_tool_line() {
+        let text = "Let me think about this\nTOOL:get_current_time\nMore text";
+        let result = Executor::extract_assistant_text(text);
+        assert!(!result.contains("TOOL:"));
+        assert!(result.contains("Let me think about this"));
+    }
+
+    #[test]
+    fn test_executor_extract_assistant_text_no_tool() {
+        let text = "Just a normal response";
+        let result = Executor::extract_assistant_text(text);
+        assert_eq!(result, "Just a normal response");
+    }
+
+    #[tokio::test]
+    async fn test_executor_skill_triggers_and_returns_content() {
+        #[derive(Debug)]
+        struct TriggerSkill;
+        #[async_trait::async_trait]
+        impl crate::skills::r#trait::Skill for TriggerSkill {
+            fn name(&self) -> &str {
+                "trigger_skill"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn side_effects(&self) -> crate::skills::r#trait::SideEffects {
+                crate::skills::r#trait::SideEffects::none()
+            }
+            fn trigger(&self) -> crate::skills::r#trait::TriggerType {
+                crate::skills::r#trait::TriggerType::OnPattern("test")
+            }
+            async fn execute(
+                &self,
+                _context: &[Message],
+                _user_message: &Message,
+            ) -> anyhow::Result<crate::skills::r#trait::SkillOutput> {
+                Ok(crate::skills::r#trait::SkillOutput::done("Skill response"))
+            }
+        }
+
+        let mut skill_registry = SkillRegistry::new();
+        skill_registry.register(Box::new(TriggerSkill));
+
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "test input")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+    }
 }
