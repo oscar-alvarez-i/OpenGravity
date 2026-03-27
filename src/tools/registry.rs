@@ -1,5 +1,6 @@
 use crate::domain::tool::{FreshnessPolicy, ToolCall, ToolResult};
 use std::collections::HashMap;
+use tracing::{debug, info};
 
 pub struct Registry {
     tools: HashMap<String, ToolDefinition>,
@@ -77,10 +78,25 @@ impl Registry {
 
     /// Zero-trust tool execution based on whitelist
     pub fn execute_tool(&self, call: &ToolCall) -> ToolResult {
+        debug!("Tool handler executing: {}", call.name);
+
         let output = match self.tools.get(&call.name) {
             Some(def) => (def.handler)(&call.input),
             None => Err("Tool implementation not found or unauthorized".to_string()),
         };
+
+        match &output {
+            Ok(result) => {
+                info!(
+                    "Tool '{}' executed successfully, result length: {}",
+                    call.name,
+                    result.len()
+                );
+            }
+            Err(err) => {
+                info!("Tool '{}' execution failed: {}", call.name, err);
+            }
+        }
 
         ToolResult {
             name: call.name.clone(),
