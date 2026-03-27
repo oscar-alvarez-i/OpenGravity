@@ -228,6 +228,48 @@ Memory retrieval must use bounded scan-then-filter pattern to avoid silent failu
 
 ---
 
+# Phase 10 — Observability Layer (mínima)
+
+## Goal
+
+Consolidar logging y tracing existente sin alterar comportamiento runtime.
+
+## Main Outcomes
+
+* branch tracing implementado en executor.rs
+* timing básico por branch usando Instant
+* observability mínima sin cambio semántico runtime
+* entry/exit logs por stage (pending_plan, skill, planner, llm, tool)
+
+## Acceptance
+
+* tests green (197 tests)
+* logging funcional
+* sin regresión funcional
+
+## Main Constraint Introduced
+
+Tracing debe ser mínimo y no alterar comportamiento runtime.
+
+---
+
+# Phase 11 — Plugin Architecture
+
+## Goal
+
+Extensión externa controlada sin debilitar core.
+
+## Main Outcomes
+
+* plugins aislados del core
+* capacidad de extensión sin modificación de componentes centrales
+
+## Main Constraint Introduced
+
+Plugin nunca puede reemplazar executor authority.
+
+---
+
 # Future Phase Direction
 
 Likely future areas include:

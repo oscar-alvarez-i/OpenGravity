@@ -8,9 +8,9 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 # Estado actual
 
-Phase activa:
-
 Phase 10 — Observability Layer (closed)
+
+Phase 11 — Plugin Architecture (próxima activa)
 
 ---
 
@@ -24,6 +24,7 @@ Phase 10 — Observability Layer (closed)
 - Phase 8: cerrada
 - Phase 9: cerrada
 - Phase 10: closed (executor observability active)
+- Phase 11: próxima (Plugin Architecture)
 
 ---
 
@@ -130,17 +131,10 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Abrir tracing mínimo del executor sin alterar comportamiento:
+Phase 11 — Plugin Architecture:
 
-- consolidar logging existente en src/observability/mod.rs
-- agregar execution flow traces (entry/exit de cada stage)
-- agregar timing básico por step
-
-Sin modificar:
-
-- executor ordering
-- memoria retrieval
-- planner core
+- habilitar extensión externa controlada
+- mantener core intacto
 
 ---
 

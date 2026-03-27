@@ -207,15 +207,16 @@ Extensión externa controlada.
 
 ---
 
-# Phase 12 — Observability Layer
+# Phase 12 — Deep Observability
 
 ## Objetivo
 
-Tracing profundo.
+Tracing profundo para debugging detallado.
 
 ## Acceptance
 
 * logs suficientes para reconstrucción total
+* debugging tooling integrado
 
 ---
 
