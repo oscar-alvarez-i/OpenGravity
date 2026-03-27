@@ -195,7 +195,7 @@ Implementation:
 ---
 
 # Phase 11 — Plugin Architecture
-Status: ACTIVE
+Status: CLOSED
 
 ## Objetivo
 
@@ -208,13 +208,14 @@ Extensión externa controlada.
 - Duplicate registration retorna error explícito
 - Built-in tools protegidas contra override
 
-## Acceptance (partial)
+## Acceptance
 
 - external registration habilitado ✓
 - duplicate protection cerrada ✓
 - built-in override prevention closed ✓
 - executor no modificado ✓
 - tests green ✓
+- external registration boundary covered ✓
 
 ---
 

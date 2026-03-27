@@ -10,7 +10,9 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase 10 — Observability Layer (closed)
 
-Phase 11 — Plugin Architecture (active)
+Phase 11 — Plugin Architecture (closed)
+
+Phase 12 — Deep Observability (active)
 
 ---
 
@@ -24,7 +26,8 @@ Phase 11 — Plugin Architecture (active)
 - Phase 8: cerrada
 - Phase 9: cerrada
 - Phase 10: closed (executor observability active)
-- Phase 11: active (Plugin Architecture)
+- Phase 11: closed (Plugin Architecture complete)
+- Phase 12: active (Deep Observability)
 
 ---
 
@@ -142,11 +145,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 11 — Plugin Architecture:
-
-- extensión externa controlada habilitada ✓
-- ToolRegistry con register() público ✓
-- duplicate prevention activa ✓
+Phase 12 — Deep Observability:
 
 ---
 
