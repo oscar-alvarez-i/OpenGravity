@@ -5,22 +5,25 @@ pub struct Registry {
     tools: HashMap<String, ToolDefinition>,
 }
 
-#[derive(Clone)]
 struct ToolDefinition {
     freshness: FreshnessPolicy,
+    handler: fn(&str) -> Result<String, String>,
 }
 
 impl Registry {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let mut tools = HashMap::new();
-        tools.insert(
-            "get_current_time".to_string(),
-            ToolDefinition {
-                freshness: FreshnessPolicy::AlwaysFresh,
-            },
-        );
-        Self { tools }
+        let mut registry = Self {
+            tools: HashMap::new(),
+        };
+        registry
+            .register(
+                "get_current_time",
+                FreshnessPolicy::AlwaysFresh,
+                super::current_time::execute,
+            )
+            .unwrap();
+        registry
     }
 
     pub fn freshness_policy(&self, tool_name: &str) -> FreshnessPolicy {
@@ -28,6 +31,21 @@ impl Registry {
             .get(tool_name)
             .map(|t| t.freshness)
             .unwrap_or_default()
+    }
+
+    pub fn register(
+        &mut self,
+        name: impl Into<String>,
+        freshness: FreshnessPolicy,
+        handler: fn(&str) -> Result<String, String>,
+    ) -> Result<(), String> {
+        let name = name.into();
+        if self.tools.contains_key(&name) {
+            return Err(format!("Tool '{}' already registered", name));
+        }
+        self.tools
+            .insert(name, ToolDefinition { freshness, handler });
+        Ok(())
     }
 
     /// Parses the LLM textual response to find `TOOL:tool_name`.
@@ -59,9 +77,9 @@ impl Registry {
 
     /// Zero-trust tool execution based on whitelist
     pub fn execute_tool(&self, call: &ToolCall) -> ToolResult {
-        let output = match call.name.as_str() {
-            "get_current_time" => super::current_time::execute(&call.input),
-            _ => Err("Tool implementation not found or unauthorized".to_string()),
+        let output = match self.tools.get(&call.name) {
+            Some(def) => (def.handler)(&call.input),
+            None => Err("Tool implementation not found or unauthorized".to_string()),
         };
 
         ToolResult {
@@ -137,5 +155,86 @@ mod tests {
         let registry = Registry::new();
         let res = registry.parse_tool_call("");
         assert!(res.is_none());
+    }
+
+    #[test]
+    fn test_register_external_tool_executes() {
+        let mut registry = Registry::new();
+        registry
+            .register("echo", FreshnessPolicy::Cacheable, |input: &str| {
+                Ok(format!("echo: {}", input))
+            })
+            .unwrap();
+
+        let call = ToolCall {
+            name: "echo".to_string(),
+            input: "hello".to_string(),
+        };
+        let res = registry.execute_tool(&call);
+        assert!(res.output.is_ok());
+        assert_eq!(res.output.unwrap(), "echo: hello");
+    }
+
+    #[test]
+    fn test_register_unknown_tool_still_fails() {
+        let registry = Registry::new();
+        let call = ToolCall {
+            name: "unknown_tool".to_string(),
+            input: "".to_string(),
+        };
+        let res = registry.execute_tool(&call);
+        assert!(res.output.is_err());
+        assert_eq!(
+            res.output.unwrap_err(),
+            "Tool implementation not found or unauthorized"
+        );
+    }
+
+    #[test]
+    fn test_register_preserves_freshness_policy() {
+        let mut registry = Registry::new();
+        registry
+            .register("test_tool", FreshnessPolicy::Cacheable, |_: &str| {
+                Ok("result".to_string())
+            })
+            .unwrap();
+
+        let freshness = registry.freshness_policy("test_tool");
+        assert_eq!(freshness, FreshnessPolicy::Cacheable);
+
+        let builtin_freshness = registry.freshness_policy("get_current_time");
+        assert_eq!(builtin_freshness, FreshnessPolicy::AlwaysFresh);
+    }
+
+    #[test]
+    fn test_duplicate_registration_rejected() {
+        let mut registry = Registry::new();
+        registry
+            .register("test_tool", FreshnessPolicy::Cacheable, |_: &str| {
+                Ok("first".to_string())
+            })
+            .unwrap();
+
+        let result = registry.register("test_tool", FreshnessPolicy::AlwaysFresh, |_: &str| {
+            Ok("second".to_string())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Tool 'test_tool' already registered");
+    }
+
+    #[test]
+    fn test_builtin_tool_cannot_be_replaced() {
+        let mut registry = Registry::new();
+
+        let result = registry.register("get_current_time", FreshnessPolicy::AlwaysFresh, |_| {
+            Ok("fake time".to_string())
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Tool 'get_current_time' already registered"
+        );
     }
 }
