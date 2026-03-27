@@ -5,6 +5,7 @@ use crate::skills::r#trait::MemoryUpdate;
 use crate::skills::registry::SkillRegistry;
 use crate::tools::registry::Registry;
 use anyhow::Result;
+use std::time::Instant;
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
@@ -210,6 +211,9 @@ impl<'a> Executor<'a> {
         system_prompt: &str,
         messages: &[Message],
     ) -> Result<StepResult> {
+        let _step_start = Instant::now();
+        info!("Step execution started");
+
         let user_msg = messages.iter().rev().find(|m| m.role == Role::User);
         let msg_content = user_msg.map(|m| m.content.as_str());
 
@@ -218,6 +222,9 @@ impl<'a> Executor<'a> {
             // C. PENDING PLAN - FIRST priority (resume interrupted work)
             // Skip skill if it already ran for this turn
             if let Some(plan) = self.pending_plan.take() {
+                let branch_start = Instant::now();
+                info!("Branch: pending_plan entered");
+
                 self.skill_just_ran = true;
                 let first_step = plan.first_step().cloned();
                 if let Some(ref step) = first_step {
@@ -227,6 +234,10 @@ impl<'a> Executor<'a> {
                         PlanStep::Tool(tool_name) => {
                             let tool_msg = self.execute_tool_step(tool_name)?;
                             self.set_pending_plan(plan);
+                            info!(
+                                "Branch: pending_plan exit, elapsed={:?}",
+                                branch_start.elapsed()
+                            );
                             return Ok(StepResult::new(vec![tool_msg], true));
                         }
                         PlanStep::Direct(_content) => {
@@ -235,6 +246,10 @@ impl<'a> Executor<'a> {
                             debug!(
                                 "Pending Direct step consumed, remaining: {}",
                                 remaining_count
+                            );
+                            info!(
+                                "Branch: pending_plan exit, elapsed={:?}",
+                                branch_start.elapsed()
                             );
                             return Ok(StepResult::new(vec![], true));
                         }
@@ -248,12 +263,9 @@ impl<'a> Executor<'a> {
                     let skill = self.skill_registry.select_skill(&factual, messages);
 
                     if let Some(skill) = skill {
+                        let branch_start = Instant::now();
                         self.skill_just_ran = true;
-                        info!(
-                            "Skill '{}' triggered for factual fragment: {}",
-                            skill.name(),
-                            factual
-                        );
+                        info!("Branch: skill entered, skill={}", skill.name());
                         let factual_msg = Message::new(Role::User, factual);
                         let skill_result = skill.execute(messages, &factual_msg).await?;
 
@@ -286,15 +298,20 @@ impl<'a> Executor<'a> {
                             }
                         }
 
+                        info!(
+                            "Branch: skill exit, skill={}, elapsed={:?}",
+                            skill.name(),
+                            branch_start.elapsed()
+                        );
                         return Ok(step_result);
                     }
                 }
 
                 // B2. SKILL - full message pattern match
-                let skill = self.skill_registry.select_skill(content, messages);
-                if let Some(skill) = skill {
+                if let Some(skill) = self.skill_registry.select_skill(content, messages) {
+                    let branch_start = Instant::now();
                     self.skill_just_ran = true;
-                    info!("Skill '{}' triggered for message", skill.name());
+                    info!("Branch: skill entered, skill={}", skill.name());
                     let skill_result = skill.execute(messages, user_msg.unwrap()).await?;
 
                     for update in &skill_result.memory_updates {
@@ -312,10 +329,20 @@ impl<'a> Executor<'a> {
                         if has_memory_updates {
                             step_result.memory_updates = skill_result.memory_updates;
                         }
+                        info!(
+                            "Branch: skill exit, skill={}, elapsed={:?}",
+                            skill.name(),
+                            branch_start.elapsed()
+                        );
                         return Ok(step_result);
                     }
 
                     if has_memory_updates {
+                        info!(
+                            "Branch: skill exit, skill={}, elapsed={:?}",
+                            skill.name(),
+                            branch_start.elapsed()
+                        );
                         return Ok(StepResult::new(vec![], true)
                             .with_memory_updates(skill_result.memory_updates));
                     }
@@ -325,6 +352,9 @@ impl<'a> Executor<'a> {
             // D. PLANNER - create plan for remaining steps (skip if skill already ran)
             if !self.skill_just_ran {
                 if let Some(plan) = self.planner.create_plan(content) {
+                    let branch_start = Instant::now();
+                    info!("Branch: planner entered");
+
                     let first_step = plan.first_step().cloned();
                     if let Some(ref step) = first_step {
                         info!("Planner executing first step: {:?}", step);
@@ -333,6 +363,10 @@ impl<'a> Executor<'a> {
                             PlanStep::Tool(tool_name) => {
                                 let tool_msg = self.execute_tool_step(tool_name)?;
                                 self.set_pending_plan(plan);
+                                info!(
+                                    "Branch: planner exit, plan_generated=true, elapsed={:?}",
+                                    branch_start.elapsed()
+                                );
                                 return Ok(StepResult::new(vec![tool_msg], true));
                             }
                             PlanStep::Direct(_content) => {
@@ -342,6 +376,10 @@ impl<'a> Executor<'a> {
                                         steps: remaining,
                                     });
                                 }
+                                info!(
+                                    "Branch: planner exit, plan_generated=true, elapsed={:?}",
+                                    branch_start.elapsed()
+                                );
                                 return Ok(StepResult::new(vec![], true));
                             }
                         }
@@ -351,6 +389,9 @@ impl<'a> Executor<'a> {
         }
 
         // E. LLM - only if no skill/planner/pending_plan action
+        let branch_start = Instant::now();
+        info!("Branch: llm entered");
+
         debug!("Executing LLM step message context:");
         debug!("  Context [0] System: {}", system_prompt);
         for (i, msg) in messages.iter().enumerate() {
@@ -369,6 +410,8 @@ impl<'a> Executor<'a> {
             .await?;
         debug!("Raw LLM response: {}", response_text);
 
+        info!("Branch: llm exit, elapsed={:?}", branch_start.elapsed());
+
         let tool_call = self.registry.parse_tool_call(&response_text);
 
         if tool_blocked && tool_call.is_some() {
@@ -381,7 +424,9 @@ impl<'a> Executor<'a> {
         }
 
         // F. TOOL EXECUTION
+        let tool_branch_start = Instant::now();
         if let Some(tool_call) = tool_call {
+            info!("Branch: tool entered, tool={}", tool_call.name);
             info!(
                 "Tool call detected: {} with input: '{}'",
                 tool_call.name, tool_call.input
@@ -393,6 +438,10 @@ impl<'a> Executor<'a> {
                     tool_call.name
                 );
                 let assistant_content = Self::extract_assistant_text(&response_text);
+                info!(
+                    "Branch: tool exit, tool=blocked, elapsed={:?}",
+                    tool_branch_start.elapsed()
+                );
 
                 return Ok(StepResult::new(
                     vec![Message::new(Role::Assistant, assistant_content)],
@@ -427,12 +476,17 @@ impl<'a> Executor<'a> {
             };
 
             info!("Returning Tool message containing execution output.");
+            info!(
+                "Branch: tool exit, tool=executed, elapsed={:?}",
+                tool_branch_start.elapsed()
+            );
             return Ok(StepResult::new(
                 vec![Message::new(Role::Tool, tool_output_text)],
                 true,
             ));
         }
 
+        info!("Branch: fallback (assistant response)");
         Ok(StepResult::new(
             vec![Message::new(Role::Assistant, response_text)],
             false,
