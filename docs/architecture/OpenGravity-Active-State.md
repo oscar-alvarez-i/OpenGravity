@@ -46,6 +46,7 @@ ToolRegistry ahora permite extensión externa controlada:
 
 - executor branch tracing activo
 - timing básico por branch activo
+- ToolRegistry handler execution tracing activo
 - memory extraction activa
 - semantic overwrite de facts implementado
 - planner multi-step activo
