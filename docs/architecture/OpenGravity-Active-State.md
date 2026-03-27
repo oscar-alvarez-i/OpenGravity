@@ -10,7 +10,7 @@ Este documento tiene prioridad sobre cualquier otra fuente cuando describe estad
 
 Phase activa:
 
-Phase 10 — Observability Layer (opening)
+Phase 10 — Observability Layer (closed)
 
 ---
 
@@ -23,12 +23,14 @@ Phase 10 — Observability Layer (opening)
 - Phase 7: cerrada
 - Phase 8: cerrada
 - Phase 9: cerrada
-- Phase 10: opening (observability layer)
+- Phase 10: closed (executor observability active)
 
 ---
 
 # Confirmado estable
 
+- executor branch tracing activo
+- timing básico por branch activo
 - memory extraction activa
 - semantic overwrite de facts implementado
 - planner multi-step activo

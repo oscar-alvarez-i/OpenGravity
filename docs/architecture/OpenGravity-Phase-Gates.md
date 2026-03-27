@@ -169,6 +169,7 @@ Separar retrieval de conversation history vs. persistent memories con budgets de
 ---
 
 # Phase 10 — Observability Layer
+Status: CLOSED
 
 ## Objetivo
 
@@ -176,16 +177,20 @@ Consolidar logging y tracing existente sin alterar comportamiento runtime.
 
 ## Scope permitido
 
-* src/observability/mod.rs: consolidar traces
 * execution flow traces (entry/exit cada stage)
 * timing básico por step
 * no modificar comportamiento
 
 ## Acceptance
 
-* tests green
-* logging funcional
-* sin regresión funcional
+* tests green ✓
+* logging funcional ✓
+* sin regresión funcional ✓
+
+Implementation:
+* branch tracing implementado en executor.rs
+* timing básico por branch usando Instant
+* observability mínima sin cambio semántico runtime
 
 ---
 
@@ -202,7 +207,7 @@ Extensión externa controlada.
 
 ---
 
-# Phase 11 — Observability Layer
+# Phase 12 — Observability Layer
 
 ## Objetivo
 
@@ -214,7 +219,7 @@ Tracing profundo.
 
 ---
 
-# Phase 12 — Production Readiness
+# Phase 13 — Production Readiness
 
 ## Objetivo
 
