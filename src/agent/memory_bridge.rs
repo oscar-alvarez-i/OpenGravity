@@ -2,6 +2,7 @@ use crate::db::sqlite::Db;
 use crate::domain::message::{Message, Role};
 use crate::skills::r#trait::MemoryUpdate;
 use anyhow::Result;
+use tracing::info;
 
 pub struct MemoryBridge<'a> {
     db: &'a Db,
@@ -75,9 +76,17 @@ impl<'a> MemoryBridge<'a> {
             .find_memory_by_key(&self.user_id, &update.fact_key)?;
 
         if existing.is_some() {
+            info!(
+                "Memory overwrite: key='{}', operation={:?}",
+                update.fact_key, update.operation
+            );
             self.db
                 .update_memory_by_key(&self.user_id, &update.fact_key, &content)?;
         } else {
+            info!(
+                "Memory persist: key='{}', operation={:?}",
+                update.fact_key, update.operation
+            );
             let msg = Message::new(Role::System, content);
             self.db.insert_memory(&self.user_id, &msg)?;
         }
