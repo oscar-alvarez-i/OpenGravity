@@ -14,6 +14,8 @@ Phase 11 — Plugin Architecture (closed)
 
 Phase 12 — Deep Observability (closed)
 
+Phase 13 — Production Readiness (closed)
+
 ---
 
 # Phase status
@@ -28,6 +30,7 @@ Phase 12 — Deep Observability (closed)
 - Phase 10: closed (executor observability active)
 - Phase 11: closed (Plugin Architecture complete)
 - Phase 12: closed (Deep Observability)
+- Phase 13: closed (Production Readiness)
 
 ---
 
@@ -51,10 +54,13 @@ ToolRegistry ahora permite extensión externa controlada:
 - memory persistence tracing activo (insert + overwrite)
 - freshness decision tracing activo
 - semantic overwrite de facts implementado
+- assistant MEMORY_SET/MEMORY_UPDATE/MEMORY_DELETE enters same semantic pipeline ✓
+- multi-key assistant memory persists correctly ✓
 - planner multi-step activo
 - pending_plan funcional
 - SQLite persistencia estable
 - runtime context compression activa
+- residual accepted debt: raw assistant text still stored but retrieval filters semantic system memories
 
 ---
 
@@ -148,9 +154,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 13 — Production Readiness:
-
----
+Phase 13 — Production Readiness (CLOSED):
 
 # Scope no permitido inmediato
 

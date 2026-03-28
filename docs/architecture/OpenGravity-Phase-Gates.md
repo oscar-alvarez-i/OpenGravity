@@ -243,15 +243,27 @@ Tracing profundo para debugging detallado.
 - tests green ✓
 
 # Phase 13 — Production Readiness
+Status: CLOSED
 
 ## Objetivo
 
 Cerrar arquitectura estable.
 
+## Implementation
+
+- Assistant MEMORY_SET/MEMORY_UPDATE/MEMORY_DELETE now enters semantic save_memory_update pipeline
+- Multi-key assistant memory persistence: "key1=val1, key2=val2" parsed and persisted
+- Semantic overwrite validated: user fact overwritten by assistant directive works correctly
+
 ## Acceptance
 
-* invariantes preservados
-* sesiones largas correctas
+- assistant memory directives enter same pipeline as user-derived memory ✓
+- semantic overwrite works for assistant → user facts ✓
+- multi-key assistant memory persists correctly ✓
+- 8 tests added and green ✓
+- residual accepted debt: raw assistant text still stored in DB but retrieval filters to semantic system memories only ✓
+- invariantes preservados ✓
+- sesiones largas correctas ✓
 
 ---
 
