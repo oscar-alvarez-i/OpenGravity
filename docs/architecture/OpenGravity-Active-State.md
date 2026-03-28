@@ -48,6 +48,7 @@ ToolRegistry ahora permite extensión externa controlada:
 - timing básico por branch activo
 - ToolRegistry handler execution tracing activo
 - memory extraction activa
+- memory persistence tracing activo (insert + overwrite)
 - semantic overwrite de facts implementado
 - planner multi-step activo
 - pending_plan funcional

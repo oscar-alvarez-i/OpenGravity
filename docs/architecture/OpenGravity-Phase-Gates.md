@@ -231,17 +231,17 @@ Tracing profundo para debugging detallado.
 - Executor branch tracing: entry/exit/timing por branch
 - Tool handler execution tracing: result success/failure visible
 - Memory extraction skill tracing activo
+- Memory persistence tracing: insert + overwrite visible
 
 ## Coverage actual (partial)
 
 - Executor branches: skill/pending_plan/planner/llm/tool ✓
 - Tool boundary: handler execution ✓
-- Memory layer: skill output visible, persistence pending
+- Memory layer: extraction + persistence ✓
 - Freshness decisions: not covered yet
 
 ## Pendiente real
 
-- memory persistence visibility
 - freshness/internal decisions visibility
 
 ## Acceptance
