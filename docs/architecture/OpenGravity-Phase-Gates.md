@@ -220,7 +220,7 @@ Extensión externa controlada.
 ---
 
 # Phase 12 — Deep Observability
-Status: ACTIVE
+Status: CLOSED
 
 ## Objetivo
 
@@ -232,21 +232,15 @@ Tracing profundo para debugging detallado.
 - Tool handler execution tracing: result success/failure visible
 - Memory extraction skill tracing activo
 - Memory persistence tracing: insert + overwrite visible
-
-## Coverage actual (partial)
-
-- Executor branches: skill/pending_plan/planner/llm/tool ✓
-- Tool boundary: handler execution ✓
-- Memory layer: extraction + persistence ✓
-- Freshness decisions: not covered yet
-
-## Pendiente real
-
-- freshness/internal decisions visibility
+- Freshness decision tracing: executor duplicate gate visible ✓
 
 ## Acceptance
 
-(pendiente hasta cubrir pendientes)
+- executor branches fully visible ✓
+- tool boundary visible ✓
+- memory layer visible ✓
+- freshness decisions visible ✓
+- tests green ✓
 
 # Phase 13 — Production Readiness
 

@@ -12,7 +12,7 @@ Phase 10 — Observability Layer (closed)
 
 Phase 11 — Plugin Architecture (closed)
 
-Phase 12 — Deep Observability (active)
+Phase 12 — Deep Observability (closed)
 
 ---
 
@@ -27,7 +27,7 @@ Phase 12 — Deep Observability (active)
 - Phase 9: cerrada
 - Phase 10: closed (executor observability active)
 - Phase 11: closed (Plugin Architecture complete)
-- Phase 12: active (Deep Observability)
+- Phase 12: closed (Deep Observability)
 
 ---
 
@@ -49,6 +49,7 @@ ToolRegistry ahora permite extensión externa controlada:
 - ToolRegistry handler execution tracing activo
 - memory extraction activa
 - memory persistence tracing activo (insert + overwrite)
+- freshness decision tracing activo
 - semantic overwrite de facts implementado
 - planner multi-step activo
 - pending_plan funcional
@@ -147,7 +148,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 12 — Deep Observability:
+Phase 13 — Production Readiness:
 
 ---
 

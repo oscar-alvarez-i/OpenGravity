@@ -96,15 +96,36 @@ impl<'a> Executor<'a> {
     }
 
     fn should_skip_duplicate(&self, tool_name: &str, last_msg: Option<&Message>) -> bool {
-        if self.registry.freshness_policy(tool_name).is_fresh() {
+        let freshness_policy = self.registry.freshness_policy(tool_name);
+        let is_fresh = freshness_policy.is_fresh();
+
+        debug!(
+            tool_name = %tool_name,
+            freshness_policy = ?freshness_policy,
+            "Checking freshness for duplicate detection"
+        );
+
+        if is_fresh {
+            debug!(
+                "Tool '{}' marked as AlwaysFresh, executing without duplicate check",
+                tool_name
+            );
             return false;
         }
 
         if let Some(msg) = last_msg {
             if msg.role == Role::Tool && msg.content.contains("Tool result available:") {
+                debug!(
+                    "Tool '{}' cacheable, duplicate detected, skipping execution",
+                    tool_name
+                );
                 return true;
             }
         }
+        debug!(
+            "Tool '{}' cacheable, no duplicate found, executing",
+            tool_name
+        );
         false
     }
 
