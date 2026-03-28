@@ -4,8 +4,45 @@ use super::{
     planner::Planner,
 };
 use crate::domain::message::{Message, Role};
+use crate::skills::r#trait::{MemoryOperation, MemoryUpdate};
 use anyhow::{anyhow, Result};
 use tracing::{debug, info, warn};
+
+fn parse_assistant_memory_update(content: &str) -> Vec<MemoryUpdate> {
+    let mut updates = Vec::new();
+    for prefix in &["MEMORY_UPDATE:", "MEMORY_SET:", "MEMORY_DELETE:"] {
+        if let Some(rest) = content.strip_prefix(prefix) {
+            let operation = match *prefix {
+                "MEMORY_UPDATE:" => MemoryOperation::Update,
+                "MEMORY_SET:" => MemoryOperation::Set,
+                "MEMORY_DELETE:" => MemoryOperation::Delete,
+                _ => return updates,
+            };
+            if operation == MemoryOperation::Delete {
+                updates.push(MemoryUpdate {
+                    fact_key: rest.trim().to_string(),
+                    fact_value: String::new(),
+                    operation,
+                });
+                return updates;
+            }
+            let pairs: Vec<&str> = rest.split(',').collect();
+            for pair in pairs {
+                if let Some(pos) = pair.find('=') {
+                    let key = pair[..pos].trim().to_string();
+                    let value = pair[pos + 1..].trim().to_string();
+                    updates.push(MemoryUpdate {
+                        fact_key: key,
+                        fact_value: value,
+                        operation: operation.clone(),
+                    });
+                }
+            }
+            return updates;
+        }
+    }
+    updates
+}
 
 const MAX_LOOP_ITERATIONS: usize = 4;
 
@@ -96,6 +133,22 @@ impl<'a> AgentLoop<'a> {
                             msg.role, msg.content
                         );
                     }
+
+                    if msg.role == Role::Assistant {
+                        let memory_updates = parse_assistant_memory_update(&msg.content);
+                        if !memory_updates.is_empty() {
+                            for memory_update in &memory_updates {
+                                debug!(
+                                    "Assistant memory directive detected: key='{}', value='{}', op={:?}",
+                                    memory_update.fact_key, memory_update.fact_value, memory_update.operation
+                                );
+                                if let Err(e) = self.memory.save_memory_update(memory_update) {
+                                    warn!("Failed to save assistant memory update: {}", e);
+                                }
+                            }
+                        }
+                    }
+
                     active_messages.push(msg.clone());
                 } else {
                     debug!("Skipping DB persistence and active context for Assistant reasoning step leading to tool call.");
@@ -428,5 +481,156 @@ mod tests {
         );
         assert!(!has_old_tool, "Old tool result should be filtered");
         assert!(has_new_user, "Latest user message should be preserved");
+    }
+
+    #[test]
+    fn test_parse_assistant_memory_update_set() {
+        let updates = parse_assistant_memory_update("MEMORY_SET:favorite_color=azul");
+        assert!(!updates.is_empty());
+        let update = &updates[0];
+        assert_eq!(update.fact_key, "favorite_color");
+        assert_eq!(update.fact_value, "azul");
+        assert_eq!(update.operation, MemoryOperation::Set);
+    }
+
+    #[test]
+    fn test_parse_assistant_memory_update_update() {
+        let updates = parse_assistant_memory_update("MEMORY_UPDATE:occupation=engineer");
+        assert!(!updates.is_empty());
+        let update = &updates[0];
+        assert_eq!(update.fact_key, "occupation");
+        assert_eq!(update.fact_value, "engineer");
+        assert_eq!(update.operation, MemoryOperation::Update);
+    }
+
+    #[test]
+    fn test_parse_assistant_memory_update_delete() {
+        let updates = parse_assistant_memory_update("MEMORY_DELETE:temporary_data");
+        assert!(!updates.is_empty());
+        let update = &updates[0];
+        assert_eq!(update.fact_key, "temporary_data");
+        assert_eq!(update.fact_value, "");
+        assert_eq!(update.operation, MemoryOperation::Delete);
+    }
+
+    #[test]
+    fn test_parse_assistant_memory_update_non_memory() {
+        let updates = parse_assistant_memory_update("Hello, how are you?");
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_parse_assistant_memory_update_multiple_keys() {
+        let updates =
+            parse_assistant_memory_update("MEMORY_SET:favorite_color=azul, favorite_food=sushi");
+        assert_eq!(updates.len(), 2);
+        assert_eq!(updates[0].fact_key, "favorite_color");
+        assert_eq!(updates[0].fact_value, "azul");
+        assert_eq!(updates[0].operation, MemoryOperation::Set);
+        assert_eq!(updates[1].fact_key, "favorite_food");
+        assert_eq!(updates[1].fact_value, "sushi");
+        assert_eq!(updates[1].operation, MemoryOperation::Set);
+    }
+
+    #[tokio::test]
+    async fn test_assistant_memory_set_overwrites_user_memory() {
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+
+        memory
+            .save_memory_update(&MemoryUpdate {
+                fact_key: "favorite_color".to_string(),
+                fact_value: "verde".to_string(),
+                operation: MemoryOperation::Set,
+            })
+            .unwrap();
+
+        let memories_before = memory.fetch_memories_only(10, 10).unwrap();
+        assert!(
+            memories_before
+                .iter()
+                .any(|m| m.content.contains("favorite_color=verde")),
+            "Should have verde before assistant update"
+        );
+
+        let assistant_updates = parse_assistant_memory_update("MEMORY_SET:favorite_color=azul");
+        assert!(!assistant_updates.is_empty());
+        for assistant_update in &assistant_updates {
+            memory.save_memory_update(assistant_update).unwrap();
+        }
+
+        let memories_after = memory.fetch_memories_only(10, 10).unwrap();
+        let color_memories: Vec<_> = memories_after
+            .iter()
+            .filter(|m| m.content.contains("favorite_color="))
+            .collect();
+
+        assert_eq!(
+            color_memories.len(),
+            1,
+            "Should have only one memory for favorite_color after overwrite"
+        );
+        assert!(
+            color_memories[0].content.contains("azul"),
+            "Final value should be azul, not verde"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_memories_returns_overwritten_value() {
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+
+        memory
+            .save_memory_update(&MemoryUpdate {
+                fact_key: "favorite_color".to_string(),
+                fact_value: "verde".to_string(),
+                operation: MemoryOperation::Set,
+            })
+            .unwrap();
+
+        memory
+            .save_memory_update(&MemoryUpdate {
+                fact_key: "favorite_color".to_string(),
+                fact_value: "azul".to_string(),
+                operation: MemoryOperation::Set,
+            })
+            .unwrap();
+
+        let memories = memory.fetch_memories_only(10, 10).unwrap();
+        let color_memory = memories
+            .iter()
+            .find(|m| m.content.contains("favorite_color="));
+
+        assert!(color_memory.is_some(), "Should find favorite_color memory");
+        assert!(
+            color_memory.unwrap().content.contains("azul"),
+            "fetch_memories_only should return azul after overwrite"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_assistant_multiple_keys_persist_and_retrieve() {
+        let db = Db::new(":memory:").unwrap();
+        let memory = MemoryBridge::new(&db, "user");
+
+        let updates =
+            parse_assistant_memory_update("MEMORY_SET:favorite_color=azul, favorite_food=sushi");
+        assert_eq!(updates.len(), 2);
+
+        for update in &updates {
+            memory.save_memory_update(update).unwrap();
+        }
+
+        let memories = memory.fetch_memories_only(10, 10).unwrap();
+        let color_memory = memories
+            .iter()
+            .find(|m| m.content.contains("favorite_color=azul"));
+        let food_memory = memories
+            .iter()
+            .find(|m| m.content.contains("favorite_food=sushi"));
+
+        assert!(color_memory.is_some(), "Should find favorite_color=azul");
+        assert!(food_memory.is_some(), "Should find favorite_food=sushi");
     }
 }
