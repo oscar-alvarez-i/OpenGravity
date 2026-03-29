@@ -37,6 +37,7 @@ pub struct Executor<'a> {
     planner: SkillPlanner,
     pending_plan: Option<Plan>,
     skill_just_ran: bool,
+    last_tool_executed: Option<String>,
 }
 
 impl<'a> Executor<'a> {
@@ -52,6 +53,7 @@ impl<'a> Executor<'a> {
             planner: SkillPlanner::new(),
             pending_plan: None,
             skill_just_ran: false,
+            last_tool_executed: None,
         }
     }
 
@@ -77,7 +79,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_tool_step(&self, tool_name: &str) -> Result<Message> {
+    fn execute_tool_step(&mut self, tool_name: &str) -> Result<Message> {
         let tool_call = crate::domain::tool::ToolCall {
             name: tool_name.to_string(),
             input: String::new(),
@@ -91,6 +93,8 @@ impl<'a> Executor<'a> {
             ),
             Err(err) => format!("Tool execution error: {}", err),
         };
+
+        self.last_tool_executed = Some(tool_name.to_string());
 
         Ok(Message::new(Role::Tool, tool_output_text))
     }
@@ -126,6 +130,19 @@ impl<'a> Executor<'a> {
             "Tool '{}' cacheable, no duplicate found, executing",
             tool_name
         );
+        false
+    }
+
+    fn should_block_identical_replay(&self, tool_name: &str) -> bool {
+        if let Some(ref last_tool) = self.last_tool_executed {
+            if last_tool == tool_name {
+                debug!(
+                    "Identical tool replay detected: '{}' - blocking to prevent infinite loop",
+                    tool_name
+                );
+                return true;
+            }
+        }
         false
     }
 
@@ -253,6 +270,13 @@ impl<'a> Executor<'a> {
 
                     match step {
                         PlanStep::Tool(tool_name) => {
+                            if self.should_block_identical_replay(tool_name) {
+                                info!(
+                                    "Branch: pending_plan blocked_identical_replay, elapsed={:?}",
+                                    branch_start.elapsed()
+                                );
+                                return Ok(StepResult::new(vec![], false));
+                            }
                             let tool_msg = self.execute_tool_step(tool_name)?;
                             self.set_pending_plan(plan);
                             info!(
@@ -382,6 +406,13 @@ impl<'a> Executor<'a> {
 
                         match step {
                             PlanStep::Tool(tool_name) => {
+                                if self.should_block_identical_replay(tool_name) {
+                                    info!(
+                                        "Branch: planner blocked_identical_replay, elapsed={:?}",
+                                        branch_start.elapsed()
+                                    );
+                                    return Ok(StepResult::new(vec![], false));
+                                }
                                 let tool_msg = self.execute_tool_step(tool_name)?;
                                 self.set_pending_plan(plan);
                                 info!(
@@ -490,11 +521,25 @@ impl<'a> Executor<'a> {
                 );
             }
 
+            if self.should_block_identical_replay(&tool_call.name) {
+                let assistant_content = Self::extract_assistant_text(&response_text);
+                info!(
+                    "Branch: tool exit, tool=blocked_identical_replay, elapsed={:?}",
+                    tool_branch_start.elapsed()
+                );
+                return Ok(StepResult::new(
+                    vec![Message::new(Role::Assistant, assistant_content)],
+                    false,
+                ));
+            }
+
             let tool_res = self.registry.execute_tool(&tool_call);
             let tool_output_text = match tool_res.output {
                 Ok(data) => format!("Tool result available: {}. Use this result to answer the user directly without calling the tool again.", data),
                 Err(err) => format!("Tool execution error: {}", err),
             };
+
+            self.last_tool_executed = Some(tool_call.name);
 
             info!("Returning Tool message containing execution output.");
             info!(
@@ -508,6 +553,7 @@ impl<'a> Executor<'a> {
         }
 
         info!("Branch: fallback (assistant response)");
+        self.last_tool_executed = None;
         Ok(StepResult::new(
             vec![Message::new(Role::Assistant, response_text)],
             false,
@@ -1603,6 +1649,34 @@ mod tests {
         let text = "Just a normal response";
         let result = Executor::extract_assistant_text(text);
         assert_eq!(result, "Just a normal response");
+    }
+
+    #[tokio::test]
+    async fn test_executor_identical_replay_lifecycle_blocks_immediate() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(2)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let result1 = executor.execute_step("sys", &[]).await.unwrap();
+        assert!(result1.should_continue);
+        assert_eq!(result1.messages[0].role, Role::Tool);
+
+        let result2 = executor
+            .execute_step("sys", &[Message::new(Role::User, "weather again")])
+            .await
+            .unwrap();
+        assert!(
+            !result2.should_continue,
+            "Identical tool replay should be blocked"
+        );
     }
 
     #[tokio::test]
