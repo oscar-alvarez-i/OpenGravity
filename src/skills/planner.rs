@@ -309,4 +309,21 @@ mod tests {
         let result = planner.split_message("Dime la hora");
         assert!(result.is_none());
     }
+
+    #[test]
+    fn test_normalize_direct_step_removes_connectors() {
+        let planner = Planner::new();
+        let result = planner.normalize_direct_step("primero dime la hora");
+        assert!(!result.contains("primero"));
+        assert_eq!(result, "Dime la hora");
+    }
+
+    #[test]
+    fn test_plan_step_tool_name_returns_correctly() {
+        let step = PlanStep::Tool("get_current_time".to_string());
+        assert_eq!(step.tool_name(), Some("get_current_time"));
+
+        let direct_step = PlanStep::Direct("some content".to_string());
+        assert_eq!(direct_step.tool_name(), None);
+    }
 }
