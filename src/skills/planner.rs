@@ -74,7 +74,7 @@ impl Planner {
     fn extract_tool_from_text(&self, text: &str) -> Option<String> {
         let text_lower = text.to_lowercase();
 
-        let known_tools = ["get_current_time", "get_weather", "get_date"];
+        let known_tools = ["get_current_time", "get_weather"];
 
         for tool in known_tools {
             if text_lower.contains(tool) {
@@ -99,7 +99,7 @@ impl Planner {
     }
 
     fn is_tool_allowed(&self, tool_name: &str) -> bool {
-        let known_tools = ["get_current_time", "get_weather", "get_date"];
+        let known_tools = ["get_current_time", "get_weather"];
 
         known_tools.contains(&tool_name)
     }

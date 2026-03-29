@@ -186,8 +186,6 @@ impl Planner {
             Some("get_current_time".to_string())
         } else if content.contains("get_weather") {
             Some("get_weather".to_string())
-        } else if content.contains("get_date") {
-            Some("get_date".to_string())
         } else if content.contains("Tool result available:") {
             Some("unknown".to_string())
         } else {
