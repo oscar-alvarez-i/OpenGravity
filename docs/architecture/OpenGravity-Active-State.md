@@ -16,6 +16,8 @@ Phase 12 — Deep Observability (closed)
 
 Phase 13 — Production Readiness (closed)
 
+Phase 14 — Runtime Integrity & Functional Certification (OPEN)
+
 ---
 
 # Phase status
@@ -31,6 +33,7 @@ Phase 13 — Production Readiness (closed)
 - Phase 11: closed (Plugin Architecture complete)
 - Phase 12: closed (Deep Observability)
 - Phase 13: closed (Production Readiness)
+- Phase 14: OPEN (Runtime Integrity & Functional Certification)
 
 ---
 
@@ -61,6 +64,54 @@ ToolRegistry ahora permite extensión externa controlada:
 - SQLite persistencia estable
 - runtime context compression activa
 - residual accepted debt: raw assistant text still stored but retrieval filters semantic system memories
+
+---
+
+# Documented implicit behaviors (Phase 14)
+
+## Branch execution priority
+
+El executor evalúa en orden estricto (src/agent/executor.rs:230-410):
+
+1. **pending_plan** — reanuda trabajo interrumpido
+2. **skill (factual fragment)** — extrae hecho de mensaje multi-step
+3. **skill (full message)** — skill con trigger pattern
+4. **planner** — crea plan multi-step
+5. **LLM** — generación directa
+6. **tool** — ejecución de herramienta
+
+## MAX_LOOP_ITERATIONS = 4
+
+Límite hardcoded en agent loop (src/agent/loop.rs:47):
+- Si se alcanza sin resolución: error "Agent loop max iterations (4) reached without final resolution"
+- get_current_time (AlwaysFresh) puede alcanzar este límite
+
+## AlwaysFresh bypass
+
+get_current_time tiene FreshnessPolicy::AlwaysFresh (src/tools/registry.rs:21-26):
+- Siempre ejecuta, ignora duplicate prevention
+- Otras herramientas usan Cacheable (default) y sí previenen duplicates
+
+## Reasoning stripping
+
+Assistant messages que preceden tool call no se persist en DB (src/agent/executor.rs:422-425):
+- Solo se persiste: User → Tool → Assistant(final)
+- Reasoning "Voy a llamar la herramienta" se descarta
+
+## Tool protocol strictness
+
+src/tools/registry.rs:54-77:
+- TOOL:tool_name debe estar en última línea no-vacía
+- Contenido después de línea TOOL causa rechazo del tool call
+- Tool inválido retorna "Tool implementation not found or unauthorized"
+
+## Memory key overwrite semantics
+
+src/db/sqlite.rs:88-102:
+- save_memory_update verifica existencia de fact_key
+- Si existe: UPDATE, si no: INSERT
+- SQL LIKE pattern matching: `%MEMORY_SET:{key}=%` y `%MEMORY_UPDATE:{key}=%`
+- Last-write-wins policy
 
 ---
 

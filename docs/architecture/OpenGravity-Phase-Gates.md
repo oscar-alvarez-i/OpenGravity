@@ -267,6 +267,74 @@ Cerrar arquitectura estable.
 
 ---
 
+# Phase 14 — Runtime Integrity & Functional Certification
+Status: OPEN
+
+## Objetivo
+
+Cerrar certificación funcional mínima del runtime actual mediante documentación de comportamientos implícitos y tests funcionales faltantes.
+
+## Scope permitido
+
+1. Documentación de comportamientos implícitos existentes:
+   - Branch execution priority order
+   - MAX_LOOP_ITERATIONS = 4
+   - AlwaysFresh bypass
+   - Reasoning stripping
+   - Tool protocol strictness
+   - Memory key overwrite semantics
+
+2. Tests funcionales faltantes:
+   - MEMORY_DELETE end-to-end
+   - Echo skill en conversación
+   - Combinación: memory overwrite + fresh tool execution
+
+## Acceptance
+
+- Documentación actualizada en Phase-Gates.md y Active-State.md ✓
+- Tests funcionales agregados y verdes ✓
+- Validación mínima obligatoria pasa:
+  - cargo fmt ✓
+  - cargo clippy --all-targets --all-features -- -D warnings ✓
+  - cargo test ✓
+- Invariantes globales preservadas ✓
+
+## Implementation
+
+### Documented implicit behaviors
+
+1. **Branch execution priority** (src/agent/executor.rs:230-410):
+   - pending_plan → skill(factual fragment) → skill(full message) → planner → LLM → tool
+
+2. **MAX_LOOP_ITERATIONS = 4** (src/agent/loop.rs:47):
+   - Límite hardcoded en agente loop
+   - Error: "Agent loop max iterations (4) reached without final resolution"
+
+3. **AlwaysFresh bypass** (src/agent/executor.rs:108-114):
+   - get_current_time siempre ejecuta, ignora duplicate prevention
+   - Otras herramientas con Cacheable (default) sí preven duplicates
+
+4. **Reasoning stripping** (src/agent/executor.rs:422-425):
+   - Assistant messages que preceden tool call no se persist en DB
+   - Solo se persiste: User → Tool → Assistant(final)
+
+5. **Tool protocol strictness** (src/tools/registry.rs:54-77):
+   - TOOL:tool_name debe estar en última línea no-vacía
+   - Contenido después de línea TOOL causa rechazo del tool call
+
+6. **Memory key overwrite semantics** (src/db/sqlite.rs:88-102):
+   - save_memory_update verifica existencia de fact_key
+   - Si existe: UPDATE, si no: INSERT
+   - SQL LIKE pattern matching para encontrar keys
+
+### Tests added
+
+- test_memory_delete_end_to_end: MEMORY_DELETE funcional
+- test_echo_skill_in_conversation: echo skill en flow
+- test_memory_overwrite_pending_plan_fresh_tool: combinacion memory overwrite + fresh tool execution
+
+---
+
 # Regla final de cierre
 
 Una phase solo cierra si no necesita explicación defensiva.

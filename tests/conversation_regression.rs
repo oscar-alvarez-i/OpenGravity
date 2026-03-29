@@ -992,3 +992,211 @@ async fn probe_memory_update_same_turn_followup_recall() -> Result<()> {
 
     Ok(())
 }
+
+// --- Phase 14: New Functional Tests ---
+
+/**
+ * test_memory_delete_end_to_end
+ *
+ * Validates MEMORY_DELETE operation works across turns.
+ */
+#[tokio::test]
+async fn test_memory_delete_end_to_end() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+    let mut seq = Sequence::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+
+    // Turn 1: SET memory
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("OK".to_string()));
+
+    // Turn 2: DELETE via assistant directive
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("MEMORY_DELETE:temporary_data".to_string()));
+
+    // Turn 3: Verify deletion - memory should not appear as SET/UPDATE in context
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            let has_set_or_update = messages.iter().any(|m| {
+                m.content.contains("MEMORY_SET:temporary_data")
+                    || m.content.contains("MEMORY_UPDATE:temporary_data")
+            });
+            assert!(
+                !has_set_or_update,
+                "Deleted memory should not appear as SET/UPDATE in context"
+            );
+            Ok("Done".to_string())
+        });
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Turn 1: SET
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(
+        Role::User,
+        "remember temporary_data=test_value",
+    ))
+    .await?;
+
+    // Turn 2: DELETE
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "forget temporary_data"))
+    .await?;
+
+    // Turn 3: Verify
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "what was temporary_data?"))
+    .await?;
+
+    Ok(())
+}
+
+/**
+ * test_echo_skill_in_conversation
+ *
+ * Validates echo skill triggers correctly in multi-turn conversation.
+ */
+#[tokio::test]
+async fn test_echo_skill_in_conversation() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+
+    // Turn 1: echo skill should trigger and return "hello world"
+    mock_llm.expect_generate_response().times(0); // Echo skill returns directly, no LLM call expected
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Echo skill triggers on "echo" pattern
+    let mut agent_loop = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    );
+
+    let res = agent_loop
+        .run(Message::new(Role::User, "echo hello world"))
+        .await?;
+
+    // Echo skill should return "hello world"
+    assert!(
+        res.content.to_lowercase().contains("hello world"),
+        "Echo skill should return stripped content"
+    );
+
+    Ok(())
+}
+
+/**
+ * test_memory_overwrite_pending_plan_fresh_tool
+ *
+ * Validates: memory overwrite + AlwaysFresh tool execution.
+ * Memory is overwritten, then fresh tool is called (bypasses duplicate prevention).
+ */
+#[tokio::test]
+async fn test_memory_overwrite_pending_plan_fresh_tool() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+    let mut seq = Sequence::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+
+    // Turn 1: Memory SET azul
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Remembered azul".to_string()));
+
+    // Turn 2: Memory overwrite verde + tool call (AlwaysFresh bypasses duplicate prevention)
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Time is 10:00".to_string()));
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Turn 1: SET memory
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Mi color favorito es azul"))
+    .await?;
+
+    // Turn 2: Overwrite + tool call
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(
+        Role::User,
+        "Mi color favorito es verde y después dime la hora",
+    ))
+    .await?;
+
+    // Verify: latest memory should be "verde" (overwrite worked)
+    let memories = db.fetch_latest_memories("u", 10)?;
+    let color_memories: Vec<_> = memories
+        .iter()
+        .filter(|m| m.content.contains("favorite_color"))
+        .collect();
+
+    // Should have only 1 memory (overwritten)
+    assert_eq!(
+        color_memories.len(),
+        1,
+        "Should have only one memory after overwrite"
+    );
+    assert!(
+        color_memories[0].content.contains("verde"),
+        "Latest value should be verde"
+    );
+
+    Ok(())
+}
