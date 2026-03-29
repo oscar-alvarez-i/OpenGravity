@@ -80,6 +80,32 @@ No expandir scope.
 
 ---
 
+# Verificación previa obligatoria
+
+Antes de crear el patch:
+
+1 **Verificar tests existentes**
+
+- Ejecutar `cargo test` para ver coverage actual
+- Si el módulo tiene tests,必须在现有测试基础上添加新测试
+- No crear tests nuevos si los existentes ya cubren el escenario
+
+2 **Verificar estado nuevo**
+
+- Si el patch introduce estado nuevo (struct, campo, DB column):
+  - Debe tener bounded semantics explícito
+  - Debe documentar lifecycle completo
+  - No debe expandir sin bound definido
+
+3 **Verificar scope de phase activa**
+
+- Phase 16 (OPEN): Autonomous Agent Safety Layer
+- Phase 17 (OPEN): Functional Contract Audit v1.0
+- El patch debe estar dentro del scope de phase activa
+- Si el cambio sale del scope, marcar como "out of scope for current phase"
+
+---
+
 # Entregable obligatorio
 
 Responder exactamente en este formato:
@@ -99,6 +125,17 @@ Responder exactamente en este formato:
 ## Side effects risk
 
 (si existe alguno)
+
+## Tests verification
+
+- [ ] Tests existentes ejecutados y pasan
+- [ ] Nuevos tests cubren el comportamiento modificado
+- [ ] No se reduce coverage existente
+
+## State boundedness
+
+- [ ] Si se introduce estado nuevo, tiene bound definido
+- [ ] Si se modifica estado existente, no se rompe invariant
 
 ---
 

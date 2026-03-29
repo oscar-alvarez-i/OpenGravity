@@ -56,8 +56,28 @@ Runs:
 ```bash
 cargo test module_name -q
 cargo test test_name
+cargo test -- test_name_here -q
 cargo clippy --lib -q
 ```
+
+## Useful Cargo Aliases (defined in .cargo/config.toml)
+
+```bash
+cargo cf   # cargo fmt --check
+cargo ct   # cargo test -q
+cargo cc   # cargo clippy --all-targets --all-features -- -D warnings
+```
+
+---
+
+# Patch Task Workflow
+
+Before any patch task:
+
+1. Read `docs/architecture/OpenGravity-Active-State.md` first
+2. Infer active phase explicitly
+3. Reject scope if phase unclear
+4. Use `docs/architecture/OpenGravity-Patch-Template.md` as mandatory task frame
 
 ---
 
@@ -83,16 +103,34 @@ cargo clippy --lib -q
 
 # Code Style
 
+## Formatting
+
+* Uses standard rustfmt defaults (no custom rustfmt.toml)
+* Run `cargo fmt` before committing
+* 4-space indentation (default)
+* 100 char line length recommended (soft limit)
+
 ## Imports
 
 * use `crate::` absolute imports for internal modules
-* group std / external / internal imports
+* group imports in order: std -> external -> internal
+* avoid wildcard imports (`use crate::module::*`)
+
+## Types
+
+* prefer explicit type annotations for public API
+* use `Arc<T>` for shared ownership, `Rc<T>` rarely
+* use `Box<dyn Trait>` for trait objects
+* prefer `&str` over `&String` in function signatures
+* use `Vec<T>` for dynamically-sized collections
 
 ## Error Handling
 
-* use `anyhow::Result` in application code
-* use `thiserror` for library-style typed errors
+* use `anyhow::Result` in application code (binaries, entry points)
+* use `thiserror` for library-style typed errors (src/lib)
 * avoid `unwrap()` and `expect()` outside documented invariants
+* propagate errors with `?` operator
+* provide context with `anyhow::Context`
 
 ## Naming
 
@@ -100,6 +138,14 @@ cargo clippy --lib -q
 * structs / enums / traits: `PascalCase`
 * functions: `snake_case`
 * constants: `SCREAMING_SNAKE_CASE`
+* variables: `snake_case`
+* field names: `snake_case`
+
+## Documentation
+
+* Document public APIs with doc comments (`///`)
+* Include usage examples where helpful
+* Document invariants in code comments when using `unwrap()`
 
 ---
 
