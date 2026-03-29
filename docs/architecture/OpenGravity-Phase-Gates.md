@@ -336,13 +336,55 @@ Cerrar certificación funcional mínima del runtime actual mediante documentaci�
 ---
 
 # Phase 15 — IA Dev Protocol Hardening
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
 Formalizar protocolo operativo explícito para clasificación de cambios, control de scope y definición de cierre.
 
 Protocolo completo documentado en: `OpenGravity-Debug-Discipline.md` → sección "Development Protocol (Phase 15)"
+
+---
+
+# Phase 16 — Autonomous Agent Safety Layer
+Status: OPEN
+
+## Objetivo
+
+Formalizar reglas mínimas de seguridad de ejecución autónoma antes de v1.0.
+
+## Scope permitido
+
+- executor-level repetition detection
+- bounded identical tool replay protection
+- planner step repetition guard
+- explicit autonomous termination criteria
+- deterministic execution fences sin alterar ordering
+
+## Scope prohibido
+
+- no new subsystem
+- no planner redesign
+- no memory semantics change
+- no ToolRegistry ownership change
+- no architectural reordering
+
+## Acceptance mínimo
+
+- repeated autonomous branch detectable
+- identical replay bounded
+- stop reason observable
+- invariantes preservadas (1 skill, 2 pending_plan, 3 planner, 4 llm, 5 tool)
+- tests requirement: coverage for bounded repetition scenarios
+
+---
+
+# Phase 17 — Functional Contract Audit v1.0
+Status: OPEN
+
+## Objetivo
+
+Derivar desde el prompt original una matriz exacta de cumplimiento funcional v1.0.
 
 ---
 
