@@ -268,7 +268,7 @@ Cerrar arquitectura estable.
 ---
 
 # Phase 14 — Runtime Integrity & Functional Certification
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
@@ -332,6 +332,17 @@ Cerrar certificación funcional mínima del runtime actual mediante documentaci�
 - test_memory_delete_end_to_end: MEMORY_DELETE funcional
 - test_echo_skill_in_conversation: echo skill en flow
 - test_memory_overwrite_pending_plan_fresh_tool: combinacion memory overwrite + fresh tool execution
+
+---
+
+# Phase 15 — IA Dev Protocol Hardening
+Status: OPEN
+
+## Objetivo
+
+Formalizar protocolo operativo explícito para clasificación de cambios, control de scope y definición de cierre.
+
+Protocolo completo documentado en: `OpenGravity-Debug-Discipline.md` → sección "Development Protocol (Phase 15)"
 
 ---
 

@@ -16,7 +16,9 @@ Phase 12 — Deep Observability (closed)
 
 Phase 13 — Production Readiness (closed)
 
-Phase 14 — Runtime Integrity & Functional Certification (OPEN)
+Phase 14 — Runtime Integrity & Functional Certification (CLOSED)
+
+Phase 15 — IA Dev Protocol Hardening (OPEN)
 
 ---
 
@@ -33,7 +35,8 @@ Phase 14 — Runtime Integrity & Functional Certification (OPEN)
 - Phase 11: closed (Plugin Architecture complete)
 - Phase 12: closed (Deep Observability)
 - Phase 13: closed (Production Readiness)
-- Phase 14: OPEN (Runtime Integrity & Functional Certification)
+- Phase 14: CLOSED (Runtime Integrity & Functional Certification)
+- Phase 15: OPEN (IA Dev Protocol Hardening)
 
 ---
 
@@ -67,7 +70,7 @@ ToolRegistry ahora permite extensión externa controlada:
 
 ---
 
-# Documented implicit behaviors (Phase 14)
+# Documented implicit behaviors (Phase 14 — closed)
 
 ## Branch execution priority
 

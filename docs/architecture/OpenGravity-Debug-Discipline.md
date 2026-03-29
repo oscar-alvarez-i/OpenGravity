@@ -168,3 +168,40 @@ Siempre empezar por:
 Si todavía no puede explicarse el bug en una frase clara:
 
 todavía no está bien diagnosticado.
+
+---
+
+# Development Protocol (Phase 15)
+
+## Change Classification
+
+Clasificar todo cambio antes de tocar código:
+
+* local bugfix
+* runtime hardening
+* test-only coverage
+* documentation sync
+* architectural change
+
+## Scope Gate
+
+Si patch toca más de 2 módulos:
+requiere justificar causa raíz única y por qué patch menor no alcanza.
+
+## Definition of Done por tipo de cambio
+
+* **bugfix local**: 1 archivo, test de regresión existente pasa
+* **hardening**: coverage aumentado, validaciones pasan
+* **docs sync**: diff mínimo, no reescribir masivamente
+
+## Known Limitations Visibility
+
+Toda deuda aceptada debe quedar explícita en docs.
+
+## Closure Rule
+
+Una phase no cierra si:
+
+* hay deuda no visible
+* hay test gap conocido no explicitado
+* requiere explicación defensiva
