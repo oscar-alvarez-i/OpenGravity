@@ -122,6 +122,27 @@ src/db/sqlite.rs:88-102:
 - SQL LIKE pattern matching: `%MEMORY_SET:{key}=%` y `%MEMORY_UPDATE:{key}=%`
 - Last-write-wins policy
 
+## PlanStep::Direct runtime contract
+
+src/skills/planner.rs:44-72 y src/agent/executor.rs:281-293:
+
+Cuando el planner recibe texto residual que no matchea tool conocido (get_current_time, get_weather):
+
+1. **planner emits PlanStep::Direct(text)** — parser crea PlanStep::Direct para texto no-reconocible como tool
+2. **stored in pending_plan** — almacenado en pending_plan del executor via set_pending_plan()
+3. **consumed next executor cycle** — Branch A (pending_plan) consume el step en siguiente turno
+4. **emits no messages** — PlanStep::Direct produce StepResult con vec![] (messages.is_empty)
+5. **forces continuation toward LLM branch** — should_continue=true, fluye hacia Branch E (LLM)
+
+**Caso ejemplo:**
+
+- Input: "Mi color favorito es azul y después contame un chiste"
+- Turn 1: Memory extrae (favorite_color=azul), pending_plan = Direct("contame un chiste")
+- Turn 2: pending_plan consume Direct step, retorna vec![], should_continue=true
+- Flow alcanza Branch E (LLM) para generar respuesta al chiste
+
+**Rol semántico:** deferred conversational continuation preserving post-memory user intent.
+
 ---
 
 # Runtime validado esperado
@@ -235,3 +256,31 @@ Antes de proponer cambios:
 1 identificar módulo exacto afectado
 2 verificar fase real actual
 3 validar impacto runtime antes de tocar arquitectura
+
+---
+
+# Next closure phases
+
+### Phase 18 — Documentation Closure
+
+Documentation-only, no code changes, no tests:
+
+- B1 factual fragment skill miss fallback
+- planner tool whitelist limitation
+- transient fact filtering
+- duplicate identical value suppression
+- B1 skill success without memory_updates
+- memory Set vs Update distinction
+
+### Phase 19 — Regression Closure
+
+Test-only hardening of documented runtime contracts:
+
+- PlanStep::Direct dedicated regression
+- B1 factual fragment miss fallback regression
+
+### Phase 20 — Loop State Hardening
+
+State-sensitive runtime validation before release hardening:
+
+- skill_just_ran persistence across loop iterations
