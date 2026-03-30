@@ -20,7 +20,7 @@ Phase 14 — Runtime Integrity & Functional Certification (CLOSED)
 
 Phase 15 — IA Dev Protocol Hardening (CLOSED)
 
-Phase 16 — Autonomous Agent Safety Layer (OPEN)
+Phase 16 — Autonomous Agent Safety Layer (OPEN - implementation covered / observation pending)
 
 Phase 17 — Functional Contract Audit v1.0 (OPEN)
 
