@@ -270,13 +270,6 @@ impl<'a> Executor<'a> {
 
                     match step {
                         PlanStep::Tool(tool_name) => {
-                            if self.should_block_identical_replay(tool_name) {
-                                info!(
-                                    "Branch: pending_plan blocked_identical_replay, elapsed={:?}",
-                                    branch_start.elapsed()
-                                );
-                                return Ok(StepResult::new(vec![], false));
-                            }
                             let tool_msg = self.execute_tool_step(tool_name)?;
                             self.set_pending_plan(plan);
                             info!(
@@ -1677,6 +1670,33 @@ mod tests {
             !result2.should_continue,
             "Identical tool replay should be blocked"
         );
+    }
+
+    #[tokio::test]
+    async fn test_executor_pending_plan_repeated_steps_allowed() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        executor.pending_plan = Some(Plan {
+            steps: vec![
+                PlanStep::Tool("get_weather".to_string()),
+                PlanStep::Tool("get_weather".to_string()),
+            ],
+        });
+
+        let messages = vec![Message::new(Role::User, "go")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(
+            result.should_continue,
+            "Repeated tool in pending_plan should be allowed"
+        );
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
     }
 
     #[tokio::test]
