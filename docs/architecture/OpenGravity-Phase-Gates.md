@@ -347,7 +347,7 @@ Protocolo completo documentado en: `OpenGravity-Debug-Discipline.md` → secció
 ---
 
 # Phase 16 — Autonomous Agent Safety Layer
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
@@ -371,11 +371,18 @@ Formalizar reglas mínimas de seguridad de ejecución autónoma antes de v1.0.
 
 ## Acceptance mínimo
 
-- repeated autonomous branch detectable
-- identical replay bounded
-- stop reason observable
-- invariantes preservadas (1 skill, 2 pending_plan, 3 planner, 4 llm, 5 tool)
-- tests requirement: coverage for bounded repetition scenarios
+- repeated autonomous branch detectable ✓
+- identical replay bounded ✓
+- stop reason observable ✓
+- invariantes preservadas (1 skill, 2 pending_plan, 3 planner, 4 llm, 5 tool) ✓
+- tests requirement: coverage for bounded repetition scenarios ✓
+
+## Implementation
+
+- last_tool_executed state para bounded identical replay
+- should_block_identical_replay helper con reset en assistant response
+- pending_plan bypass para permitir step repetitions en planes explícitos
+- branch-sensitive replay policy: pending_plan sin restricción, planner y tool con protección
 
 ---
 

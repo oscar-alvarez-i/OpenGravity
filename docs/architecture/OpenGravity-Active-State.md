@@ -20,7 +20,7 @@ Phase 14 — Runtime Integrity & Functional Certification (CLOSED)
 
 Phase 15 — IA Dev Protocol Hardening (CLOSED)
 
-Phase 16 — Autonomous Agent Safety Layer (OPEN - implementation covered / observation pending)
+Phase 16 — Autonomous Agent Safety Layer (CLOSED)
 
 Phase 17 — Functional Contract Audit v1.0 (OPEN)
 
@@ -41,7 +41,7 @@ Phase 17 — Functional Contract Audit v1.0 (OPEN)
 - Phase 13: closed (Production Readiness)
 - Phase 14: CLOSED (Runtime Integrity & Functional Certification)
 - Phase 15: CLOSED (IA Dev Protocol Hardening)
-- Phase 16: OPEN (Autonomous Agent Safety Layer - scope definido, implementación no iniciada)
+- Phase 16: CLOSED (Autonomous Agent Safety Layer - bounded replay, branch-sensitive policy, invariants preserved)
 - Phase 17: OPEN (Functional Contract Audit v1.0)
 
 ---
@@ -214,7 +214,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 13 — Production Readiness (CLOSED):
+Phase 17 — Functional Contract Audit v1.0 (OPEN):
 
 # Scope no permitido inmediato
 
