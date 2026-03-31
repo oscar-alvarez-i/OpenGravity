@@ -24,6 +24,8 @@ Phase 16 — Autonomous Agent Safety Layer (CLOSED)
 
 Phase 17 — Functional Contract Audit v1.0 (CLOSED)
 
+Phase 18 — Documentation Closure (CLOSED)
+
 ---
 
 # Phase status
@@ -43,6 +45,7 @@ Phase 17 — Functional Contract Audit v1.0 (CLOSED)
 - Phase 15: CLOSED (IA Dev Protocol Hardening)
 - Phase 16: CLOSED (Autonomous Agent Safety Layer - bounded replay, branch-sensitive policy, invariants preserved)
 - Phase 17: CLOSED (Functional Contract Audit v1.0 - runtime contracts documented)
+- Phase 18: CLOSED (Documentation Closure - runtime contracts fully documented)
 
 ---
 
@@ -267,7 +270,7 @@ No reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 17 — Functional Contract Audit v1.0 (OPEN):
+Phase 19 — Regression Closure (OPEN):
 
 # Scope no permitido inmediato
 
@@ -292,17 +295,6 @@ Antes de proponer cambios:
 ---
 
 # Next closure phases
-
-### Phase 18 — Documentation Closure
-
-Documentation-only, no code changes, no tests:
-
-- B1 factual fragment skill miss fallback
-- planner tool whitelist limitation
-- transient fact filtering
-- duplicate identical value suppression
-- B1 skill success without memory_updates
-- memory Set vs Update distinction
 
 ### Phase 19 — Regression Closure
 
