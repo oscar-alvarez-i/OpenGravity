@@ -977,6 +977,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_executor_direct_step_from_factual_continues() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(
+            Role::User,
+            "mi color favorito es azul y después contame un chiste",
+        )];
+
+        executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(
+            executor.has_pending_plan(),
+            "pending_plan should be created with Direct step"
+        );
+
+        let next_messages = vec![Message::new(Role::User, "go")];
+        let result2 = executor.execute_step("sys", &next_messages).await.unwrap();
+
+        assert!(result2.should_continue);
+        assert!(result2.messages.is_empty());
+        assert!(
+            !executor.has_pending_plan(),
+            "Direct step should be consumed"
+        );
+    }
+
+    #[tokio::test]
     async fn test_executor_tool_result_error_path() {
         let mut mock_groq = MockLlmProvider::new();
         mock_groq
