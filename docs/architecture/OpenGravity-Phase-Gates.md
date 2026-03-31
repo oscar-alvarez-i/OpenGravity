@@ -387,11 +387,22 @@ Formalizar reglas mínimas de seguridad de ejecución autónoma antes de v1.0.
 ---
 
 # Phase 17 — Functional Contract Audit v1.0
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
 Derivar desde el prompt original una matriz exacta de cumplimiento funcional v1.0.
+
+## Acceptance
+
+- runtime contracts documented ✓
+- no runtime behavior changed ✓
+- no test debt introduced ✓
+
+## Implementation
+
+- PlanStep::Direct runtime contract documented in Active-State
+- functional branch contracts documented in Active-State
 
 ---
 

@@ -22,7 +22,7 @@ Phase 15 — IA Dev Protocol Hardening (CLOSED)
 
 Phase 16 — Autonomous Agent Safety Layer (CLOSED)
 
-Phase 17 — Functional Contract Audit v1.0 (OPEN)
+Phase 17 — Functional Contract Audit v1.0 (CLOSED)
 
 ---
 
@@ -42,7 +42,7 @@ Phase 17 — Functional Contract Audit v1.0 (OPEN)
 - Phase 14: CLOSED (Runtime Integrity & Functional Certification)
 - Phase 15: CLOSED (IA Dev Protocol Hardening)
 - Phase 16: CLOSED (Autonomous Agent Safety Layer - bounded replay, branch-sensitive policy, invariants preserved)
-- Phase 17: OPEN (Functional Contract Audit v1.0)
+- Phase 17: CLOSED (Functional Contract Audit v1.0 - runtime contracts documented)
 
 ---
 
@@ -89,6 +89,8 @@ El executor evalúa en orden estricto (src/agent/executor.rs:230-410):
 5. **LLM** — generación directa
 6. **tool** — ejecución de herramienta
 
+**B1 sin memory_updates:** Si skill factual extrae pero no emite memory_updates, no se crea pending_plan, flujo continúa a LLM.
+
 ## MAX_LOOP_ITERATIONS = 4
 
 Límite hardcoded en agent loop (src/agent/loop.rs:47):
@@ -121,6 +123,30 @@ src/db/sqlite.rs:88-102:
 - Si existe: UPDATE, si no: INSERT
 - SQL LIKE pattern matching: `%MEMORY_SET:{key}=%` y `%MEMORY_UPDATE:{key}=%`
 - Last-write-wins policy
+
+## Memory duplicate suppression
+
+src/skills/memory.rs:256-264:
+- Si fact_key ya existe con valor idéntico (case-insensitive): no se emite UPDATE
+- Previene UPDATE redundante cuando valor no cambia
+
+## Transient fact filtering
+
+src/skills/memory.rs:131-159:
+- Facts con indicadores transitorios (hoy, ahora, qué hora, el clima) son ignorados
+- No se persisten facts de consulta momentánea
+
+## Planner tool whitelist
+
+src/skills/planner.rs:77,102:
+- Solo tools reconocidas: get_current_time, get_weather
+- Texto residual no-tool se convierte en PlanStep::Direct
+
+## B1 skill miss fallback
+
+src/agent/executor.rs:300-346 (B1) + 348-387 (B2):
+- Si factual fragment no matchea skill: continúa a B2 (full message skill)
+- Si B2 no matchea: continúa a D (planner) → E (LLM)
 
 ## PlanStep::Direct runtime contract
 
