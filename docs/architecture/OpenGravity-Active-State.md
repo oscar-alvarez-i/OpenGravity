@@ -102,6 +102,9 @@ Límite hardcoded en agent loop (src/agent/loop.rs:47):
 get_current_time tiene FreshnessPolicy::AlwaysFresh (src/tools/registry.rs:21-26):
 - Siempre ejecuta, ignora duplicate prevention
 - Otras herramientas usan Cacheable (default) y sí previenen duplicates
+- Executor replay guard:
+  - `should_block_identical_replay` usa `last_tool_executed` para bloquear replay inmediato de la misma tool
+  - El estado se resetea solo cuando downstream skill retorna content (src/agent/executor.rs:549)
 
 ## Reasoning stripping
 
@@ -203,6 +206,9 @@ Para:
 - MEMORY_DELETE
 
 se conserva solo la última ocurrencia por key.
+
+- compact_memory_updates (src/agent/planner.rs:234-269) elimina updates superseded por key
+- Preserva orden original de mensajes no-memory
 
 ---
 
