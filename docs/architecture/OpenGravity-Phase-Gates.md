@@ -406,6 +406,34 @@ Derivar desde el prompt original una matriz exacta de cumplimiento funcional v1.
 
 ---
 
+# Phase 19 — Regression Closure
+Status: CLOSED
+
+## Objetivo
+
+Test-only coverage hardening de contratos runtime documentados en Phase 17.
+
+## Scope permitido
+
+- regression tests para contratos documentados
+- test-only, sin cambios de runtime
+- no refactor estructural
+- no nueva arquitectura
+
+## Acceptance
+
+- tests green ✓
+- no runtime behavior changed ✓
+- no architecture change ✓
+- invariants preserved ✓
+
+## Implementation
+
+- test_executor_direct_step_from_factual_continues: PlanStep::Direct regression
+- test_executor_b1_factual_miss_continues: B1 factual miss fallback regression
+
+---
+
 # Regla final de cierre
 
 Una phase solo cierra si no necesita explicación defensiva.
