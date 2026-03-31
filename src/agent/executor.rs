@@ -896,6 +896,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_executor_b1_factual_miss_continues() {
+        let mock_groq = MockLlmProvider::new();
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(
+            Role::User,
+            "mi color favorito es azul y después get_unknown_tool",
+        )];
+
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert!(result.messages.is_empty());
+        assert!(!executor.has_pending_plan());
+    }
+
+    #[tokio::test]
     async fn test_executor_pending_plan_tool_execution() {
         let mock_groq = MockLlmProvider::new();
 
