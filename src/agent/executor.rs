@@ -1853,13 +1853,7 @@ mod tests {
             "First run should execute skill"
         );
 
-        let db2 = crate::db::sqlite::Db::new(":memory:").unwrap();
-        let memory2 = crate::agent::memory_bridge::MemoryBridge::new(&db2, "user");
-        let planner2 = crate::agent::planner::Planner::new();
-        let executor2 = Executor::new(&llm, &registry, &skill_registry);
-        let mut agent_loop2 = crate::agent::r#loop::AgentLoop::new(memory2, planner2, executor2);
-
-        let second_run = agent_loop2
+        let second_run = agent_loop
             .run(Message::new(Role::User, "trigger run second"))
             .await
             .unwrap();

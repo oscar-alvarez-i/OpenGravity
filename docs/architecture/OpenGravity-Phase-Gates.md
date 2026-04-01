@@ -435,7 +435,7 @@ Test-only coverage hardening de contratos runtime documentados en Phase 17.
 ---
 
 # Phase 20 — Loop State Hardening
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
@@ -462,12 +462,16 @@ Validar que el estado sensible del loop no persista stale entre conversaciones n
 - loop.rs invoca reset en run() entry ✓
 - tests green ✓
 - validación obligatoria pasa ✓
+- sensitive executor state proven non-stale across sequential runs ✓
+- same executor instance validated ✓
+- no branch-order regression ✓
+- no collateral state mutation (reset limited to skill_just_ran only) ✓
 
 ## Implementation
 
-- Executor::reset_loop_state() método público (src/agent/executor.rs)
-- AgentLoop::run() invoca reset al inicio (src/agent/loop.rs)
-- test_executor_skill_not_stale_across_runs verifica doble run() independiente
+- Executor::reset_loop_state() método público (src/agent/executor.rs:60-62) resetea solo skill_just_ran
+- AgentLoop::run() invoca reset al inicio (src/agent/loop.rs:80)
+- test_executor_skill_not_stale_across_runs usa el MISMO AgentLoop para dos run() consecutivos
 
 ---
 

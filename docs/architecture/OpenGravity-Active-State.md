@@ -272,7 +272,7 @@ No reutilizar resultado stale.
 
 Phase 19 — Regression Closure (CLOSED):
 
-Phase 20 — Loop State Hardening (OPEN):
+Phase 20 — Loop State Hardening (CLOSED):
 
 # Scope no permitido inmediato
 
@@ -307,10 +307,14 @@ Test-only hardening of documented runtime contracts:
 
 ### Phase 20 — Loop State Hardening
 
+CLOSED
+
 State-sensitive runtime validation before release hardening:
 
 - skill_just_ran lifecycle contract:
   - persists intra-loop (between iterations within same run)
   - resets inter-run (between new AgentLoop::run() calls)
 - reset via executor.reset_loop_state() called at run() entry
-- test added: test_executor_skill_not_stale_across_runs
+- reset limited exclusively to skill_just_ran (no collateral state mutation)
+- stale loop-sensitive executor state reset validated
+- same-instance regression test validated: test_executor_skill_not_stale_across_runs uses same AgentLoop for two consecutive run() calls
