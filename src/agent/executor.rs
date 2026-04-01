@@ -57,6 +57,10 @@ impl<'a> Executor<'a> {
         }
     }
 
+    pub fn reset_loop_state(&mut self) {
+        self.skill_just_ran = false;
+    }
+
     pub fn has_pending_plan(&self) -> bool {
         self.pending_plan.is_some()
     }
@@ -1793,5 +1797,75 @@ mod tests {
 
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_executor_skill_not_stale_across_runs() {
+        #[derive(Debug)]
+        struct TriggerSkill;
+        #[async_trait::async_trait]
+        impl crate::skills::r#trait::Skill for TriggerSkill {
+            fn name(&self) -> &str {
+                "trigger_skill"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn side_effects(&self) -> crate::skills::r#trait::SideEffects {
+                crate::skills::r#trait::SideEffects::none()
+            }
+            fn trigger(&self) -> crate::skills::r#trait::TriggerType {
+                crate::skills::r#trait::TriggerType::OnPattern("run")
+            }
+            async fn execute(
+                &self,
+                _context: &[Message],
+                _user_message: &Message,
+            ) -> anyhow::Result<crate::skills::r#trait::SkillOutput> {
+                Ok(crate::skills::r#trait::SkillOutput::done("Skill response"))
+            }
+        }
+
+        let db = crate::db::sqlite::Db::new(":memory:").unwrap();
+        let memory = crate::agent::memory_bridge::MemoryBridge::new(&db, "user");
+        let planner = crate::agent::planner::Planner::new();
+
+        let mut skill_registry = SkillRegistry::new();
+        skill_registry.register(Box::new(TriggerSkill));
+
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .returning(|_, _| Box::pin(async { Ok("fallback".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut agent_loop = crate::agent::r#loop::AgentLoop::new(memory, planner, executor);
+
+        let first_run = agent_loop
+            .run(Message::new(Role::User, "trigger run first"))
+            .await
+            .unwrap();
+        assert!(
+            first_run.content.contains("Skill response"),
+            "First run should execute skill"
+        );
+
+        let db2 = crate::db::sqlite::Db::new(":memory:").unwrap();
+        let memory2 = crate::agent::memory_bridge::MemoryBridge::new(&db2, "user");
+        let planner2 = crate::agent::planner::Planner::new();
+        let executor2 = Executor::new(&llm, &registry, &skill_registry);
+        let mut agent_loop2 = crate::agent::r#loop::AgentLoop::new(memory2, planner2, executor2);
+
+        let second_run = agent_loop2
+            .run(Message::new(Role::User, "trigger run second"))
+            .await
+            .unwrap();
+        assert!(
+            second_run.content.contains("Skill response"),
+            "Second run should also execute skill (not stale)"
+        );
     }
 }

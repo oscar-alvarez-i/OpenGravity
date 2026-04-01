@@ -77,6 +77,8 @@ impl<'a> AgentLoop<'a> {
     pub async fn run(&mut self, incoming_msg: Message) -> Result<Message> {
         info!("Starting agent loop");
 
+        self.executor.reset_loop_state();
+
         // 1. Recover memory and filter stale tool results
         let conversation = self.memory.fetch_conversation_only(6)?;
         let memories = self.memory.fetch_memories_only(20, 4)?;
