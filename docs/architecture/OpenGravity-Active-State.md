@@ -309,4 +309,8 @@ Test-only hardening of documented runtime contracts:
 
 State-sensitive runtime validation before release hardening:
 
-- skill_just_ran persistence across loop iterations
+- skill_just_ran lifecycle contract:
+  - persists intra-loop (between iterations within same run)
+  - resets inter-run (between new AgentLoop::run() calls)
+- reset via executor.reset_loop_state() called at run() entry
+- test added: test_executor_skill_not_stale_across_runs
