@@ -25,6 +25,13 @@ impl Registry {
             )
             .unwrap();
         registry
+            .register(
+                "write_local_note",
+                FreshnessPolicy::Cacheable,
+                super::local::execute,
+            )
+            .unwrap();
+        registry
     }
 
     pub fn freshness_policy(&self, tool_name: &str) -> FreshnessPolicy {
