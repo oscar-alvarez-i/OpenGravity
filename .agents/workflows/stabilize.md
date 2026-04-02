@@ -14,4 +14,5 @@ Follow this workflow when completing a feature or before committing major change
    // turbo
    ./scripts/check_full.sh
 
-3. If coverage is below 95%, refer to AGENT.md Policy 4.
+3. If coverage is below 95%, add additional tests to cover missing branches.
+   Reference `.agents/workflows/coverage_hardening.md` for guidance.

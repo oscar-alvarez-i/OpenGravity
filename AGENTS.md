@@ -54,10 +54,21 @@ Runs:
 ## Targeted Validation
 
 ```bash
-cargo test module_name -q
-cargo test test_name
-cargo test -- test_name_here -q
+# Run all tests
+cargo test
+
+# Run tests matching a pattern
+cargo test module_name
+cargo test test_name_here
+
+# Run a specific test function
+cargo test -- test_function_name -q
+
+# Run clippy on library code only
 cargo clippy --lib -q
+
+# Run clippy on a specific file
+cargo clippy -- --cap-lints warn src/path/to/file.rs
 ```
 
 ## Useful Cargo Aliases (defined in .cargo/config.toml)
@@ -98,6 +109,17 @@ Before any patch task:
 * all tool inputs must be validated
 * arbitrary shell execution is forbidden
 * sensitive environment variables must never be logged
+
+---
+
+# LLM Error Handling
+
+* **Timeouts**: Implement reasonable timeouts per provider (default: 30s for OpenRouter, 60s for streaming)
+* **Retries**: Apply exponential backoff for transient failures (max 3 retries)
+* **Fallback**: Support multiple LLM providers with automatic fallback on failure
+* **Rate Limits**: Respect provider rate limits; implement request queuing if needed
+* **Logging**: Log LLM errors with context (model, provider, token count) but never log API keys
+* **Graceful Degradation**: If all LLMs fail, respond with a helpful error message instead of crashing
 
 ---
 
@@ -163,11 +185,18 @@ Primary technical references:
 
 Detailed internal rules remain in:
 
+* `@.agents/rules/README.md` — Index of all rules
 * `@.agents/rules/architecture_rules.md`
 * `@.agents/rules/rust_quality_rules.md`
-* `@.agents/rules/validation_rules.md`
+* `@.agents/rules/validation.md`
 * `@.agents/workflows/stabilize.md`
 * `@.agents/decisions/current_state.md`
+
+## Available Skills
+
+* `rust-validation-skill` — Validation procedures
+* `rust-test-skill` — Testing procedures
+* `production-audit-skill` — Production readiness audits
 
 ---
 
