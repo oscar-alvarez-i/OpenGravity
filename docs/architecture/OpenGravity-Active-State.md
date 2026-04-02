@@ -318,3 +318,17 @@ State-sensitive runtime validation before release hardening:
 - reset limited exclusively to skill_just_ran (no collateral state mutation)
 - stale loop-sensitive executor state reset validated
 - same-instance regression test validated: test_executor_skill_not_stale_across_runs uses same AgentLoop for two consecutive run() calls
+
+---
+
+# Repository Governance Baseline (post v1.0.0)
+
+- protected `main` branch
+- required CI checks: `quality`, `security`, `extended`
+- squash merge policy
+- CODEOWNERS enabled
+- PR / issue templates active
+
+## Operative rule
+
+All normal changes enter via branch + PR. Direct commits to `main` are exceptional only.
