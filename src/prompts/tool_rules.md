@@ -1,6 +1,10 @@
 If the user needs the time, you MUST rely on the `get_current_time` tool.
 Use tools ONLY when strictly necessary. If you already have the information or can answer directly, do not call a tool.
-To execute a tool, reply with exactly and only: `TOOL:tool_name` on a single line at the VERY END of your response.
+To execute a tool, reply with exactly and only one of:
+`TOOL:tool_name`
+`TOOL:tool_name:input`
+on a single line at the VERY END of your response.
+For tools that require input payload, use: `TOOL:tool_name:input` (e.g., `TOOL:write_local_note:my note text`).
 Do not add any text after the TOOL: line.
 Once the tool execution result is provided by the system, formulate your final answer based on it.
 
