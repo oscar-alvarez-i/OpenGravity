@@ -1,5 +1,6 @@
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
 const NOTE_FILE: &str = "local_notes.txt";
@@ -27,11 +28,21 @@ fn write_to_path(input: &str, path: PathBuf) -> Result<String, String> {
         }
     }
 
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut file = if path.exists() {
+        let mut opts = OpenOptions::new();
+        opts.read(true)
+            .write(true)
+            .append(true)
+            .custom_flags(libc::O_NOFOLLOW);
+        opts.open(&path)
+            .map_err(|e| format!("Failed to open file: {}", e))?
+    } else {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("Failed to create file: {}", e))?
+    };
 
     writeln!(file, "{}", input).map_err(|e| format!("Failed to write: {}", e))?;
 
