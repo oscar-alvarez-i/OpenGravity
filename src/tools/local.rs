@@ -9,6 +9,24 @@ fn get_note_path() -> PathBuf {
 }
 
 fn write_to_path(input: &str, path: PathBuf) -> Result<String, String> {
+    if path.exists() {
+        let metadata =
+            std::fs::symlink_metadata(&path).map_err(|e| format!("Failed to check file: {}", e))?;
+
+        if metadata.file_type().is_symlink() {
+            return Err("Cannot write to symlink".to_string());
+        }
+
+        let canonical = std::fs::canonicalize(&path)
+            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
+
+        if let Ok(cwd) = std::env::current_dir() {
+            if !canonical.starts_with(&cwd) {
+                return Err("Path outside working directory".to_string());
+            }
+        }
+    }
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
