@@ -57,7 +57,23 @@ impl Registry {
     }
 
     /// Parses the LLM textual response to find `TOOL:tool_name` or `TOOL:tool_name:input`.
-    /// Format: TOOL:name or TOOL:name:input
+    ///
+    /// ## Phase 2.1 Official Grammar
+    ///   TOOL:<tool_name>           -> tool_name="<tool_name>", input=""
+    ///   TOOL:<tool_name>:<input>   -> tool_name="<tool_name>", input="<input>"
+    ///
+    /// ## Contract Rules
+    /// 1. tool_name MUST NOT contain ':' - ':' is reserved for future namespace expansion
+    /// 2. First ':' separates tool_name from input (legacy split behavior)
+    /// 3. Namespaced tool names (e.g., calendar:create) use legacy fallback:
+    ///    TOOL:calendar:create -> name="calendar", input="create"
+    ///
+    /// ## Examples
+    ///   TOOL:get_current_time -> name="get_current_time", input=""
+    ///   TOOL:write_local_note:hello -> name="write_local_note", input="hello"
+    ///   TOOL:write_local_note: -> name="write_local_note", input=""
+    ///   TOOL:calendar:create -> name="calendar", input="create" (legacy fallback)
+    ///
     /// Only accepts TOOL if it's on the last non-empty line.
     pub fn parse_tool_call(&self, response: &str) -> Option<ToolCall> {
         let lines: Vec<&str> = response.lines().collect();
@@ -292,5 +308,15 @@ mod tests {
         let call = res.unwrap();
         assert_eq!(call.name, "get_current_time");
         assert_eq!(call.input, "");
+    }
+
+    #[test]
+    fn test_parse_tool_legacy_namespaced_fallback() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("TOOL:calendar:create");
+        assert!(res.is_some());
+        let call = res.unwrap();
+        assert_eq!(call.name, "calendar");
+        assert_eq!(call.input, "create");
     }
 }

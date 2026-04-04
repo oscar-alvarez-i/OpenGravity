@@ -4,6 +4,17 @@ To execute a tool, reply with exactly and only one of:
 `TOOL:tool_name`
 `TOOL:tool_name:input`
 on a single line at the VERY END of your response.
+
+### Tool Protocol Contract (Phase 2.1)
+
+**Rules:**
+1. tool_name MUST NOT contain ':' - colon is reserved for future namespace expansion
+2. First ':' separates tool_name from input
+3. Examples:
+   - `TOOL:get_current_time` -> tool_name="get_current_time", input=""
+   - `TOOL:write_local_note:hello world` -> tool_name="write_local_note", input="hello world"
+   - `TOOL:write_local_note:` -> tool_name="write_local_note", input=""
+
 For tools that require input payload, use: `TOOL:tool_name:input` (e.g., `TOOL:write_local_note:my note text`).
 Do not add any text after the TOOL: line.
 Once the tool execution result is provided by the system, formulate your final answer based on it.
