@@ -37,10 +37,11 @@ fn write_to_path(input: &str, path: PathBuf) -> Result<String, String> {
         opts.open(&path)
             .map_err(|e| format!("Failed to open file: {}", e))?
     } else {
-        OpenOptions::new()
-            .create(true)
+        let mut opts = OpenOptions::new();
+        opts.create(true)
             .append(true)
-            .open(&path)
+            .custom_flags(libc::O_NOFOLLOW);
+        opts.open(&path)
             .map_err(|e| format!("Failed to create file: {}", e))?
     };
 
