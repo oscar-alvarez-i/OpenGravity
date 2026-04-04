@@ -255,3 +255,9 @@ choose the one that:
 * easier to explain;
 * cheaper to run;
 * easier to reverse.
+
+---
+
+# 12. Environment Pinning
+
+Rust toolchain is pinned via rust-toolchain.toml to ensure deterministic builds across local, Codex and CI environments.
