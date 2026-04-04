@@ -475,6 +475,47 @@ Validar que el estado sensible del loop no persista stale entre conversaciones n
 
 ---
 
+# Phase 2.1 — Safe Local Tool Contract
+Status: CLOSED
+
+## Objetivo
+
+Validar contrato de ejecución personal local con side-effect real mínimo y seguro.
+
+## Scope permitido
+
+- Nueva tool write_local_note
+- Path fijo sandboxed (./local_notes.txt)
+- Append-only, sin overwrite
+- Input validation: no empty, no multiline
+
+## Scope prohibido
+
+- No scheduler
+- No cron
+- No background jobs
+- No external connectors
+- No custom path input
+- No delete/update semantics
+
+## Acceptance
+
+- write_local_note ejecuta correctamente ✓
+- archivo local se crea o append correctamente ✓
+- FreshnessPolicy::Cacheable (compatible con duplicate prevention) ✓
+- tests green (223 total) ✓
+- validación obligatoria pasa ✓
+- single-line enforcement ✓
+- deterministic local file contract ✓
+
+## Implementation
+
+- src/tools/local.rs: write_to_path() factorizada, execute() con validación
+- src/tools/mod.rs: pub mod local agregado
+- src/tools/registry.rs: write_local_note registrado con Cacheable
+
+---
+
 # Regla final de cierre
 
 Una phase solo cierra si no necesita explicación defensiva.

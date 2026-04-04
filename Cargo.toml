@@ -20,6 +20,7 @@ thiserror = "1.0"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
 chrono = "0.4"
 async-trait = "0.1"
+libc = "0.2"
 
 [dev-dependencies]
 mockall = "0.12"

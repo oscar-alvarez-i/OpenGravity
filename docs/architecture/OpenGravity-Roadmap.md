@@ -84,6 +84,10 @@ Usar solo cuando:
 
 Permitir que OpenGravity ejecute tareas personales reales localmente.
 
+## Phase actual
+
+Phase 2.1: CLOSED (write_local_note tool)
+
 ## Capacidades objetivo
 
 - calendar actions
