@@ -258,6 +258,58 @@ choose the one that:
 
 ---
 
-# 12. Environment Pinning
+# 12. Merge Gate
+
+PR merge is allowed when:
+
+* CI checks pass
+* external audit completed
+* no blocking architectural findings remain
+* affected documentation is synchronized when scope requires it
+
+For single-maintainer operation, explicit approving review may be bypassed only when technical gates above are satisfied.
+
+---
+
+# 13. External AI Roles
+
+## Minimax
+
+* bounded implementation
+* minimal diff generation
+
+## Codex
+
+* preferred structural review before merge when runtime or architecture changes
+
+## ChatGPT
+
+* architectural arbitration
+* scope control
+* closure validation
+
+---
+
+# 14. Branch Model
+
+## main
+
+* stable only
+
+## phase/*
+
+* active functional phases
+
+## infra/*
+
+* transversal repository changes
+
+## hotfix/*
+
+* bounded corrective patches
+
+---
+
+# 15. Environment Pinning
 
 Rust toolchain is pinned via rust-toolchain.toml to ensure deterministic builds across local, Codex and CI environments.
