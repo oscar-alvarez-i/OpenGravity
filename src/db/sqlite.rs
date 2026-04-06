@@ -44,7 +44,7 @@ impl Db {
             "SELECT role, content FROM memories WHERE user_id = ?1 ORDER BY created_at DESC LIMIT ?2"
         )?;
 
-        let memory_iter = stmt.query_map(params![user_id, limit], |row| {
+        let memory_iter = stmt.query_map(params![user_id, limit as i64], |row| {
             let role_str: String = row.get(0)?;
             let content: String = row.get(1)?;
 
