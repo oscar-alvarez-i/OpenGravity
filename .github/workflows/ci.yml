@@ -12,12 +12,16 @@ env:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, "1.91.1"]
     steps:
       - uses: actions/checkout@v6
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ matrix.rust }}
           components: clippy, rustfmt
           
       - name: Cache Rust
