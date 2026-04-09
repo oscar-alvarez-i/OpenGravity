@@ -1,15 +1,13 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::PathBuf;
 
 const NOTE_FILE: &str = "local_notes.txt";
 
-fn get_note_path() -> PathBuf {
-    PathBuf::from(NOTE_FILE)
-}
+fn write_to_path(input: &str) -> Result<String, String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
+    let path = cwd.join(NOTE_FILE);
 
-fn write_to_path(input: &str, path: PathBuf) -> Result<String, String> {
     if path.exists() {
         let metadata =
             std::fs::symlink_metadata(&path).map_err(|e| format!("Failed to check file: {}", e))?;
@@ -18,13 +16,24 @@ fn write_to_path(input: &str, path: PathBuf) -> Result<String, String> {
             return Err("Cannot write to symlink".to_string());
         }
 
+        if !metadata.file_type().is_file() {
+            return Err("Target is not a regular file".to_string());
+        }
+
         let canonical = std::fs::canonicalize(&path)
             .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
 
-        if let Ok(cwd) = std::env::current_dir() {
-            if !canonical.starts_with(&cwd) {
-                return Err("Path outside working directory".to_string());
-            }
+        let expected = cwd.join(NOTE_FILE);
+        let expected_canonical = std::fs::canonicalize(&expected)
+            .map_err(|e| format!("Failed to canonicalize expected path: {}", e))?;
+
+        if canonical != expected_canonical {
+            return Err("Path escape detected".to_string());
+        }
+    } else {
+        let parent = path.parent().ok_or("Invalid path")?;
+        if parent != cwd {
+            return Err("Invalid target directory".to_string());
         }
     }
 
@@ -55,24 +64,26 @@ pub fn execute(input: &str) -> Result<String, String> {
     if input.is_empty() {
         return Err("Input cannot be empty".to_string());
     }
-    if input.contains('\n') {
+    if input.contains('\n') || input.contains('\r') {
         return Err("Input must be single-line".to_string());
     }
 
-    write_to_path(input, get_note_path())
+    write_to_path(input)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
 
     #[test]
+    #[serial]
     fn test_write_note_creates_file() {
-        let test_file = "test_notes.txt";
-        let path = PathBuf::from(test_file);
+        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        fs::remove_file(&path).ok();
 
-        let result = write_to_path("test note", path.clone());
+        let result = write_to_path("test note");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "nota guardada");
 
@@ -84,12 +95,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_write_note_appends() {
-        let test_file = "test_notes_append.txt";
-        let path = PathBuf::from(test_file);
+        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        fs::remove_file(&path).ok();
 
-        write_to_path("line 1", path.clone()).ok();
-        write_to_path("line 2", path.clone()).ok();
+        write_to_path("line 1").ok();
+        write_to_path("line 2").ok();
 
         let content = fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
@@ -120,11 +132,19 @@ mod tests {
     }
 
     #[test]
-    fn test_write_single_line_with_spaces() {
-        let test_file = "test_notes_spaces.txt";
-        let path = PathBuf::from(test_file);
+    fn test_write_carriage_return_fails() {
+        let result = execute("line1\rline2");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("single-line"));
+    }
 
-        let result = write_to_path("hello world", path.clone());
+    #[test]
+    #[serial]
+    fn test_write_single_line_with_spaces() {
+        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        fs::remove_file(&path).ok();
+
+        let result = write_to_path("hello world");
         assert!(result.is_ok());
 
         let content = fs::read_to_string(&path).unwrap();
