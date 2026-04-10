@@ -64,7 +64,11 @@ pub fn execute(input: &str) -> Result<String, String> {
     if input.is_empty() {
         return Err("Input cannot be empty".to_string());
     }
-    if input.contains('\n') || input.contains('\r') {
+    if input.contains('\n')
+        || input.contains('\r')
+        || input.contains('\u{2028}')
+        || input.contains('\u{2029}')
+    {
         return Err("Input must be single-line".to_string());
     }
 
@@ -76,6 +80,46 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::fs;
+
+    #[test]
+    fn test_write_empty_input_fails() {
+        let result = execute("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_whitespace_input_fails() {
+        let result = execute("   ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_multiline_input_fails() {
+        let result = execute("line1\nline2");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("single-line"));
+    }
+
+    #[test]
+    fn test_write_carriage_return_fails() {
+        let result = execute("line1\rline2");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("single-line"));
+    }
+
+    #[test]
+    fn test_write_unicode_line_separators() {
+        let result = execute("line1\u{2028}line2");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("single-line"));
+    }
+
+    #[test]
+    fn test_write_paragraph_separator() {
+        let result = execute("line1\u{2029}line2");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("single-line"));
+    }
 
     #[test]
     #[serial]
@@ -113,32 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn test_write_empty_input_fails() {
-        let result = execute("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_write_whitespace_input_fails() {
-        let result = execute("   ");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_write_multiline_input_fails() {
-        let result = execute("line1\nline2");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("single-line"));
-    }
-
-    #[test]
-    fn test_write_carriage_return_fails() {
-        let result = execute("line1\rline2");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("single-line"));
-    }
-
-    #[test]
     #[serial]
     fn test_write_single_line_with_spaces() {
         let path = std::env::current_dir().unwrap().join(NOTE_FILE);
@@ -149,6 +167,42 @@ mod tests {
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("hello world"));
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    #[serial]
+    fn test_write_symlink_rejected() {
+        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        fs::remove_file(&path).ok();
+
+        let symlink_path = std::env::current_dir()
+            .unwrap()
+            .join("test_symlink_target.txt");
+        fs::write(&symlink_path, "target").ok();
+        std::os::unix::fs::symlink(&symlink_path, &path).ok();
+
+        let result = write_to_path("should fail");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("symlink"));
+
+        fs::remove_file(&symlink_path).ok();
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    #[serial]
+    fn test_write_unicode_content() {
+        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        fs::remove_file(&path).ok();
+
+        let unicode_input = "note with émoji 🎉 and 中文";
+        let result = write_to_path(unicode_input);
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content.trim(), unicode_input);
 
         fs::remove_file(&path).ok();
     }
