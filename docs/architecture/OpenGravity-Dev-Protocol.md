@@ -292,6 +292,44 @@ For single-maintainer operation, explicit approving review may be bypassed only 
 
 # 14. Branch Model
 
+## Phase Branching Rule
+
+Every phase MUST be developed in a dedicated branch.
+
+### Naming convention
+
+```
+
+phase/<phase-number>-<short-description>
+
+```
+
+Example:
+
+```
+
+phase/2.2-tool-execution-layer
+
+```
+
+### Operational rules
+
+- No direct work on main
+- main is updated ONLY via PR
+- Each phase branch maps to exactly one phase
+- No mixing multiple phases in one branch
+- Phase closes → branch merged → branch can be deleted
+
+### PR requirements
+
+Each phase must produce:
+- one PR
+- passing CI
+- audited changes
+- documentation aligned before merge
+
+---
+
 ## main
 
 * stable only

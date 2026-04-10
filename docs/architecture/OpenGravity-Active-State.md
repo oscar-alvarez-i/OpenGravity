@@ -30,6 +30,10 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 ---
 
+## Phase 2.2 — Tool Execution Layer (OPEN)
+
+---
+
 # Runtime invariants
 
 ## Branch execution order
