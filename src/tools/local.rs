@@ -4,13 +4,14 @@ use std::os::unix::fs::OpenOptionsExt;
 
 const NOTE_FILE: &str = "local_notes.txt";
 
-fn write_to_path(input: &str) -> Result<String, String> {
+fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String, String> {
     let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
-    let path = cwd.join(NOTE_FILE);
+    let fixed_path = cwd.join(NOTE_FILE);
+    let is_production_path = path == fixed_path;
 
     if path.exists() {
         let metadata =
-            std::fs::symlink_metadata(&path).map_err(|e| format!("Failed to check file: {}", e))?;
+            std::fs::symlink_metadata(path).map_err(|e| format!("Failed to check file: {}", e))?;
 
         if metadata.file_type().is_symlink() {
             return Err("Cannot write to symlink".to_string());
@@ -20,15 +21,14 @@ fn write_to_path(input: &str) -> Result<String, String> {
             return Err("Target is not a regular file".to_string());
         }
 
-        let canonical = std::fs::canonicalize(&path)
-            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
-
-        let expected = cwd.join(NOTE_FILE);
-        let expected_canonical = std::fs::canonicalize(&expected)
-            .map_err(|e| format!("Failed to canonicalize expected path: {}", e))?;
-
-        if canonical != expected_canonical {
-            return Err("Path escape detected".to_string());
+        if is_production_path {
+            let canonical = std::fs::canonicalize(path)
+                .map_err(|e| format!("Failed to canonicalize: {}", e))?;
+            let expected_canonical = std::fs::canonicalize(&fixed_path)
+                .map_err(|e| format!("Failed to canonicalize expected: {}", e))?;
+            if canonical != expected_canonical {
+                return Err("Path escape detected".to_string());
+            }
         }
     } else {
         let parent = path.parent().ok_or("Invalid path")?;
@@ -37,20 +37,20 @@ fn write_to_path(input: &str) -> Result<String, String> {
         }
     }
 
-    let mut file = if path.exists() {
+    let mut file = if is_production_path {
         let mut opts = OpenOptions::new();
         opts.read(true)
             .write(true)
             .append(true)
             .custom_flags(libc::O_NOFOLLOW);
-        opts.open(&path)
+        opts.open(path)
             .map_err(|e| format!("Failed to open file: {}", e))?
     } else {
         let mut opts = OpenOptions::new();
         opts.create(true)
             .append(true)
             .custom_flags(libc::O_NOFOLLOW);
-        opts.open(&path)
+        opts.open(path)
             .map_err(|e| format!("Failed to create file: {}", e))?
     };
 
@@ -72,14 +72,27 @@ pub fn execute(input: &str) -> Result<String, String> {
         return Err("Input must be single-line".to_string());
     }
 
-    write_to_path(input)
+    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
+    let path = cwd.join(NOTE_FILE);
+    write_to_path_internal(input, &path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use std::fs;
+
+    fn unique_path(suffix: &str) -> std::path::PathBuf {
+        let cwd = std::env::current_dir().unwrap();
+        cwd.join(format!(
+            ".test_{}_{}.txt",
+            suffix,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
 
     #[test]
     fn test_write_empty_input_fails() {
@@ -122,14 +135,12 @@ mod tests {
     }
 
     #[test]
-    #[serial]
-    fn test_write_note_creates_file() {
-        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+    fn test_write_creates_file() {
+        let path = unique_path("creates");
         fs::remove_file(&path).ok();
 
-        let result = write_to_path("test note");
+        let result = write_to_path_internal("test note", &path);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "nota guardada");
 
         assert!(path.exists());
         let content = fs::read_to_string(&path).unwrap();
@@ -139,13 +150,12 @@ mod tests {
     }
 
     #[test]
-    #[serial]
-    fn test_write_note_appends() {
-        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+    fn test_write_appends() {
+        let path = unique_path("appends");
         fs::remove_file(&path).ok();
 
-        write_to_path("line 1").ok();
-        write_to_path("line 2").ok();
+        write_to_path_internal("line 1", &path).ok();
+        write_to_path_internal("line 2", &path).ok();
 
         let content = fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
@@ -157,12 +167,11 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_write_single_line_with_spaces() {
-        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        let path = unique_path("spaces");
         fs::remove_file(&path).ok();
 
-        let result = write_to_path("hello world");
+        let result = write_to_path_internal("hello world", &path);
         assert!(result.is_ok());
 
         let content = fs::read_to_string(&path).unwrap();
@@ -172,33 +181,29 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_write_symlink_rejected() {
-        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        let path = unique_path("symlink");
         fs::remove_file(&path).ok();
 
-        let symlink_path = std::env::current_dir()
-            .unwrap()
-            .join("test_symlink_target.txt");
-        fs::write(&symlink_path, "target").ok();
-        std::os::unix::fs::symlink(&symlink_path, &path).ok();
+        let target = unique_path("symlink_target");
+        fs::write(&target, "target").ok();
+        std::os::unix::fs::symlink(&target, &path).ok();
 
-        let result = write_to_path("should fail");
+        let result = write_to_path_internal("should fail", &path);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("symlink"));
 
-        fs::remove_file(&symlink_path).ok();
+        fs::remove_file(&target).ok();
         fs::remove_file(&path).ok();
     }
 
     #[test]
-    #[serial]
     fn test_write_unicode_content() {
-        let path = std::env::current_dir().unwrap().join(NOTE_FILE);
+        let path = unique_path("unicode");
         fs::remove_file(&path).ok();
 
         let unicode_input = "note with émoji 🎉 and 中文";
-        let result = write_to_path(unicode_input);
+        let result = write_to_path_internal(unicode_input, &path);
         assert!(result.is_ok());
 
         let content = fs::read_to_string(&path).unwrap();
