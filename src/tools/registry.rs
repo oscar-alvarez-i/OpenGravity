@@ -25,6 +25,13 @@ impl Registry {
             )
             .unwrap();
         registry
+            .register(
+                "write_local_note",
+                FreshnessPolicy::Cacheable,
+                super::local::execute,
+            )
+            .unwrap();
+        registry
     }
 
     pub fn freshness_policy(&self, tool_name: &str) -> FreshnessPolicy {
@@ -49,8 +56,25 @@ impl Registry {
         Ok(())
     }
 
-    /// Parses the LLM textual response to find `TOOL:tool_name`.
-    /// ONLY accepts TOOL if it's on the last non-empty line.
+    /// Parses the LLM textual response to find `TOOL:tool_name` or `TOOL:tool_name:input`.
+    ///
+    /// ## Phase 2.1 Official Grammar
+    ///   TOOL:<tool_name>           -> tool_name="<tool_name>", input=""
+    ///   TOOL:<tool_name>:<input>   -> tool_name="<tool_name>", input="<input>"
+    ///
+    /// ## Contract Rules
+    /// 1. tool_name MUST NOT contain ':' - ':' is reserved for future namespace expansion
+    /// 2. First ':' separates tool_name from input (legacy split behavior)
+    /// 3. Namespaced tool names (e.g., calendar:create) use legacy fallback:
+    ///    TOOL:calendar:create -> name="calendar", input="create"
+    ///
+    /// ## Examples
+    ///   TOOL:get_current_time -> name="get_current_time", input=""
+    ///   TOOL:write_local_note:hello -> name="write_local_note", input="hello"
+    ///   TOOL:write_local_note: -> name="write_local_note", input=""
+    ///   TOOL:calendar:create -> name="calendar", input="create" (legacy fallback)
+    ///
+    /// Only accepts TOOL if it's on the last non-empty line.
     pub fn parse_tool_call(&self, response: &str) -> Option<ToolCall> {
         let lines: Vec<&str> = response.lines().collect();
         if lines.is_empty() {
@@ -62,12 +86,14 @@ impl Registry {
             if trimmed.is_empty() {
                 continue;
             }
-            if let Some(stripped) = trimmed.strip_prefix("TOOL:") {
-                let tool_name = stripped.trim().to_string();
+            if let Some(after_tool) = trimmed.strip_prefix("TOOL:") {
+                let mut parts = after_tool.splitn(2, ':');
+                let tool_name = parts.next()?.trim().to_string();
+                let input = parts.next().unwrap_or("").trim().to_string();
                 if !tool_name.is_empty() {
                     return Some(ToolCall {
                         name: tool_name,
-                        input: "".to_string(),
+                        input,
                     });
                 }
             }
@@ -252,5 +278,45 @@ mod tests {
             result.unwrap_err(),
             "Tool 'get_current_time' already registered"
         );
+    }
+
+    #[test]
+    fn test_parse_tool_with_input() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("Write this note\nTOOL:write_local_note:hello world");
+        assert!(res.is_some());
+        let call = res.unwrap();
+        assert_eq!(call.name, "write_local_note");
+        assert_eq!(call.input, "hello world");
+    }
+
+    #[test]
+    fn test_parse_tool_with_empty_input() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("TOOL:write_local_note:");
+        assert!(res.is_some());
+        let call = res.unwrap();
+        assert_eq!(call.name, "write_local_note");
+        assert_eq!(call.input, "");
+    }
+
+    #[test]
+    fn test_parse_tool_backward_compatibility() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("TOOL:get_current_time");
+        assert!(res.is_some());
+        let call = res.unwrap();
+        assert_eq!(call.name, "get_current_time");
+        assert_eq!(call.input, "");
+    }
+
+    #[test]
+    fn test_parse_tool_legacy_namespaced_fallback() {
+        let registry = Registry::new();
+        let res = registry.parse_tool_call("TOOL:calendar:create");
+        assert!(res.is_some());
+        let call = res.unwrap();
+        assert_eq!(call.name, "calendar");
+        assert_eq!(call.input, "create");
     }
 }
