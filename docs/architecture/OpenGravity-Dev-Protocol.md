@@ -345,3 +345,43 @@ Each phase must produce:
 ## hotfix/*
 
 * bounded corrective patches
+
+---
+
+## Phase Kickoff Checklist
+
+Before starting any new phase:
+
+- Create phase branch (phase/X.Y-name)
+- Verify Active-State reflects previous phase closure
+- Define phase scope BEFORE coding
+- Validate no unresolved structural debt exists
+- Confirm documentation baseline is consistent
+
+No implementation begins without completing this checklist.
+
+---
+
+## Phase Closure Checklist
+
+A phase can be closed only if:
+
+- Code implemented and audited
+- Tests passing
+- No structural issues detected
+- Documentation updated (Phase-Gates + others if needed)
+- Known limitations explicitly documented
+
+If any item is missing → phase remains OPEN
+
+---
+
+## Legacy Code Rule
+
+Temporary coexistence of old and new implementations is allowed ONLY if:
+
+- explicitly documented in Phase-Gates
+- marked as temporary
+- has a clear future removal phase
+
+Legacy code must never become implicit or permanent.
