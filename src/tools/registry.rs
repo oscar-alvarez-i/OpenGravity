@@ -6,6 +6,17 @@ pub struct Registry {
     tools: HashMap<String, ToolDefinition>,
 }
 
+pub struct ToolExecutionRequest {
+    pub tool_name: String,
+    pub input: String,
+}
+
+pub struct ToolExecutionResult {
+    pub success: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
 struct ToolDefinition {
     freshness: FreshnessPolicy,
     handler: fn(&str) -> Result<String, String>,
@@ -127,6 +138,28 @@ impl Registry {
         ToolResult {
             name: call.name.clone(),
             output,
+        }
+    }
+
+    pub fn execute(&self, request: ToolExecutionRequest) -> ToolExecutionResult {
+        match self.tools.get(&request.tool_name) {
+            Some(def) => match (def.handler)(&request.input) {
+                Ok(output) => ToolExecutionResult {
+                    success: true,
+                    output,
+                    error: None,
+                },
+                Err(err) => ToolExecutionResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(err),
+                },
+            },
+            None => ToolExecutionResult {
+                success: false,
+                output: String::new(),
+                error: Some("Tool implementation not found or unauthorized".to_string()),
+            },
         }
     }
 }
@@ -318,5 +351,54 @@ mod tests {
         let call = res.unwrap();
         assert_eq!(call.name, "calendar");
         assert_eq!(call.input, "create");
+    }
+
+    #[test]
+    fn test_execute_existing_tool_via_execute_method() {
+        let registry = Registry::new();
+        let request = ToolExecutionRequest {
+            tool_name: "get_current_time".to_string(),
+            input: "".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(result.success);
+        assert!(!result.output.is_empty());
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_execute_nonexistent_tool_returns_error() {
+        let registry = Registry::new();
+        let request = ToolExecutionRequest {
+            tool_name: "nonexistent_tool".to_string(),
+            input: "test".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(!result.success);
+        assert!(result.output.is_empty());
+        assert!(result.error.is_some());
+        assert_eq!(
+            result.error.unwrap(),
+            "Tool implementation not found or unauthorized"
+        );
+    }
+
+    #[test]
+    fn test_execute_output_matches_handler_output() {
+        let mut registry = Registry::new();
+        registry
+            .register("test_echo", FreshnessPolicy::Cacheable, |input: &str| {
+                Ok(format!("echo: {}", input))
+            })
+            .unwrap();
+
+        let request = ToolExecutionRequest {
+            tool_name: "test_echo".to_string(),
+            input: "hello".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(result.success);
+        assert_eq!(result.output, "echo: hello");
+        assert!(result.error.is_none());
     }
 }

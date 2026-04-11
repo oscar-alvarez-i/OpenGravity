@@ -475,6 +475,70 @@ Validar que el estado sensible del loop no persista stale entre conversaciones n
 
 ---
 
+# Phase 2.2 — Tool Execution Layer
+Status: OPEN
+
+## Objetivo
+
+Introducir un contrato explícito de Tool Execution sin alterar comportamiento runtime.
+
+El objetivo es formalizar cómo se ejecutan las tools, no cambiar semántica de ejecución.
+
+---
+
+## Scope permitido
+
+- Introducir struct ToolExecutionRequest
+- Introducir struct ToolExecutionResult
+- Centralizar entry point de ejecución en ToolRegistry
+- Normalizar manejo de output de tools
+- Preservar modelo de handlers existente (fn pointer)
+
+---
+
+## Scope prohibido
+
+- No refactor de executor
+- No cambios en planner
+- No cambios en skill system
+- No async ni modelo de concurrencia
+- No nuevos traits o capas de abstracción
+- No cambios en firma de handlers
+- No lógica de retry
+- No orquestación de ejecución
+- No nuevos subsistemas
+
+---
+
+## Acceptance
+
+- Tool execution accesible vía método explícito único
+- Comportamiento existente permanece idéntico
+- Sin cambio en orden de ejecución
+- Sin regresión en outputs de tools
+- Tests validan paths de éxito y failure
+- Restricciones de seguridad de Phase 2.1 intactas
+
+---
+
+## Constraints
+
+- Diff mínimo
+- Sin expansión arquitectural
+- Comportamiento determinístico preservado
+
+---
+
+## Implementation
+
+- ToolExecutionRequest struct introduced
+- ToolExecutionResult struct introduced
+- ToolRegistry::execute() implemented as single execution entry point
+- Executor migrated to use ToolExecutionResult
+- Legacy execute_tool() remains temporarily for compatibility
+
+---
+
 # Phase 2.1 — Safe Local Tool Contract
 Status: CLOSED
 

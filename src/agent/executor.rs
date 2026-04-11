@@ -3,7 +3,7 @@ use crate::llm::LlmOrchestrator;
 use crate::skills::planner::{Plan, PlanStep, Planner as SkillPlanner};
 use crate::skills::r#trait::MemoryUpdate;
 use crate::skills::registry::SkillRegistry;
-use crate::tools::registry::Registry;
+use crate::tools::registry::{Registry, ToolExecutionRequest};
 use anyhow::Result;
 use std::time::Instant;
 use tracing::{debug, info, warn};
@@ -84,18 +84,21 @@ impl<'a> Executor<'a> {
     }
 
     fn execute_tool_step(&mut self, tool_name: &str) -> Result<Message> {
-        let tool_call = crate::domain::tool::ToolCall {
-            name: tool_name.to_string(),
+        let request = ToolExecutionRequest {
+            tool_name: tool_name.to_string(),
             input: String::new(),
         };
 
-        let tool_res = self.registry.execute_tool(&tool_call);
-        let tool_output_text = match tool_res.output {
-            Ok(data) => format!(
+        let tool_res = self.registry.execute(request);
+        let tool_output_text = match tool_res.success {
+            true => format!(
                 "Tool result available: {}. Use this result to answer the user directly.",
-                data
+                tool_res.output
             ),
-            Err(err) => format!("Tool execution error: {}", err),
+            false => format!(
+                "Tool execution error: {}",
+                tool_res.error.unwrap_or_default()
+            ),
         };
 
         self.last_tool_executed = Some(tool_name.to_string());
@@ -530,10 +533,14 @@ impl<'a> Executor<'a> {
                 ));
             }
 
-            let tool_res = self.registry.execute_tool(&tool_call);
-            let tool_output_text = match tool_res.output {
-                Ok(data) => format!("Tool result available: {}. Use this result to answer the user directly without calling the tool again.", data),
-                Err(err) => format!("Tool execution error: {}", err),
+            let request = ToolExecutionRequest {
+                tool_name: tool_call.name.clone(),
+                input: tool_call.input.clone(),
+            };
+            let tool_res = self.registry.execute(request);
+            let tool_output_text = match tool_res.success {
+                true => format!("Tool result available: {}. Use this result to answer the user directly without calling the tool again.", tool_res.output),
+                false => format!("Tool execution error: {}", tool_res.error.unwrap_or_default()),
             };
 
             self.last_tool_executed = Some(tool_call.name);
