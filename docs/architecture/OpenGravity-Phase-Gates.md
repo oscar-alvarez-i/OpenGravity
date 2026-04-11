@@ -529,6 +529,16 @@ El objetivo es formalizar cómo se ejecutan las tools, no cambiar semántica de 
 
 ---
 
+## Implementation
+
+- ToolExecutionRequest struct introduced
+- ToolExecutionResult struct introduced
+- ToolRegistry::execute() implemented as single execution entry point
+- Executor migrated to use ToolExecutionResult
+- Legacy execute_tool() remains temporarily for compatibility
+
+---
+
 # Phase 2.1 — Safe Local Tool Contract
 Status: CLOSED
 
