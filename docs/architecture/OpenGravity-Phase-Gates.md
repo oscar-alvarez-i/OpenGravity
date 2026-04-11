@@ -596,7 +596,7 @@ Introducir logging mínimo en el Tool Execution Layer para mejorar auditabilidad
 ---
 
 # Phase 2.5 — Local Read Capability
-Status: ACTIVE
+Status: CLOSED
 
 ## Objetivo
 
@@ -640,6 +640,19 @@ Habilitar lectura segura del archivo local utilizado por write_local_note, cerra
 
 - lectura devuelve archivo completo sin límite de tamaño
 - no existe segmentación ni query de contenido
+
+---
+
+## Implementation
+
+- Nueva tool: read_local_notes
+- Introducida función resolve_note_path() para centralizar path
+- Introducida función validate_note_path() para unificar validación de seguridad
+- write_local_note y read_local_notes comparten validación de path
+- lectura implementada usando OpenOptions con O_NOFOLLOW
+- sin cambios en executor ni planner
+- sin cambio semántico en write_local_note
+- seguridad de filesystem local unificada en un único punto (validate_note_path)
 
 ---
 
