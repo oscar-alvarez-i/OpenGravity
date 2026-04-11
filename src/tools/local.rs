@@ -4,7 +4,12 @@ use std::os::unix::fs::OpenOptionsExt;
 
 const NOTE_FILE: &str = "local_notes.txt";
 
-fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String, String> {
+fn resolve_note_path() -> Result<std::path::PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
+    Ok(cwd.join(NOTE_FILE))
+}
+
+fn validate_note_path(path: &std::path::Path) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
     let fixed_path = cwd.join(NOTE_FILE);
     let is_production_path = path == fixed_path;
@@ -14,7 +19,7 @@ fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String,
             std::fs::symlink_metadata(path).map_err(|e| format!("Failed to check file: {}", e))?;
 
         if metadata.file_type().is_symlink() {
-            return Err("Cannot write to symlink".to_string());
+            return Err("Cannot access symlink".to_string());
         }
 
         if !metadata.file_type().is_file() {
@@ -36,6 +41,14 @@ fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String,
             return Err("Invalid target directory".to_string());
         }
     }
+
+    Ok(())
+}
+
+fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String, String> {
+    validate_note_path(path)?;
+
+    let is_production_path = path == std::env::current_dir().unwrap().join(NOTE_FILE);
 
     let mut file = if is_production_path {
         let mut opts = OpenOptions::new();
@@ -72,9 +85,36 @@ pub fn execute(input: &str) -> Result<String, String> {
         return Err("Input must be single-line".to_string());
     }
 
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
-    let path = cwd.join(NOTE_FILE);
+    let path = resolve_note_path()?;
     write_to_path_internal(input, &path)
+}
+
+pub fn execute_read(input: &str) -> Result<String, String> {
+    let input = input.trim();
+    if !input.is_empty() {
+        return Err("read_local_notes does not accept input".to_string());
+    }
+
+    let path = resolve_note_path()?;
+
+    validate_note_path(&path)?;
+
+    if !path.exists() {
+        return Err("File not found".to_string());
+    }
+
+    let mut opts = OpenOptions::new();
+    opts.read(true).custom_flags(libc::O_NOFOLLOW);
+    let mut file = opts
+        .open(&path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    use std::io::Read;
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    Ok(content)
 }
 
 #[cfg(test)]
@@ -209,6 +249,95 @@ mod tests {
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content.trim(), unicode_input);
 
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_read_existing_file() {
+        let path = resolve_note_path().unwrap();
+        fs::remove_file(&path).ok();
+
+        fs::write(&path, "line1 content").ok();
+
+        // Ensure read sees consistent state by revalidating path
+        validate_note_path(&path).ok();
+
+        let read_result = execute_read("");
+        assert!(read_result.is_ok());
+        assert!(read_result.unwrap().contains("line1"));
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_read_file_not_exists() {
+        let path = resolve_note_path().unwrap();
+        fs::remove_file(&path).ok();
+
+        let result = execute_read("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("File not found"));
+    }
+
+    #[test]
+    fn test_read_empty_file() {
+        let path = resolve_note_path().unwrap();
+        fs::remove_file(&path).ok();
+
+        fs::write(&path, "").ok();
+
+        // Ensure read sees consistent state by revalidating path
+        validate_note_path(&path).ok();
+
+        let result = execute_read("");
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_read_multiple_lines() {
+        let path = resolve_note_path().unwrap();
+        fs::remove_file(&path).ok();
+
+        fs::write(&path, "first\nsecond\nthird\n").ok();
+
+        // Ensure read sees consistent state by revalidating path
+        validate_note_path(&path).ok();
+
+        let result = execute_read("");
+        assert!(result.is_ok());
+        let content = result.unwrap();
+        assert!(content.contains("first"));
+        assert!(content.contains("second"));
+        assert!(content.contains("third"));
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_read_input_not_allowed() {
+        let result = execute_read("some input");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not accept input"));
+    }
+
+    #[test]
+    fn test_read_symlink_rejected() {
+        let path = resolve_note_path().unwrap();
+        fs::remove_file(&path).ok();
+
+        let target = std::env::current_dir().unwrap().join(".test_read_target");
+        fs::remove_file(&target).ok();
+        fs::write(&target, "target content").ok();
+        std::os::unix::fs::symlink(&target, &path).ok();
+
+        let result = execute_read("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_lowercase().contains("symlink"));
+
+        fs::remove_file(&target).ok();
         fs::remove_file(&path).ok();
     }
 }

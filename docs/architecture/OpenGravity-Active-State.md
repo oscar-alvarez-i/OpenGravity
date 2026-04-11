@@ -25,9 +25,10 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 - Phase 2.1: CLOSED
 - Phase 2.2: CLOSED
-- Tool disponible: write_local_note
-- Branch actual: phase-2-1-safe-local-tool-contract
-- Next: Phase 2.3
+- Phase 2.5: ACTIVE
+- Tools disponibles: write_local_note, read_local_notes
+- Branch actual: phase/2.5-local-read-capability
+- Next: Phase 2.6
 
 ---
 

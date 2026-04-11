@@ -595,6 +595,54 @@ Introducir logging mínimo en el Tool Execution Layer para mejorar auditabilidad
 
 ---
 
+# Phase 2.5 — Local Read Capability
+Status: ACTIVE
+
+## Objetivo
+
+Habilitar lectura segura del archivo local utilizado por write_local_note, cerrando el loop de acceso local (write → read) sin introducir duplicación ni drift.
+
+## Scope permitido
+
+- Nueva tool read_local_notes
+- Lectura completa de archivo local_notes.txt
+- Introducción de función interna mínima para resolución de path
+- Reutilización del mismo contrato de path para lectura y escritura
+
+## Scope prohibido
+
+- No multi-file support
+- No path dinámico
+- No refactor estructural
+- No cambios en executor
+- No cambios en planner
+- No filtros ni parsing de contenido
+- No streaming ni partial reads
+
+## Acceptance
+
+- lectura correcta del archivo
+- error si archivo no existe
+- input no permitido
+- path contract centralizado
+- sin duplicación de lógica de path
+- seguridad equivalente a write (symlink protection)
+- tests nuevos cubren lectura
+- tests existentes sin regresión
+
+## Constraints
+
+- diff mínimo
+- no duplicación de lógica existente
+- mantener determinismo
+
+## Known Limitations
+
+- lectura devuelve archivo completo sin límite de tamaño
+- no existe segmentación ni query de contenido
+
+---
+
 # Phase 2.1 — Safe Local Tool Contract
 Status: CLOSED
 
