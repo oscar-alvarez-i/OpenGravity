@@ -1,6 +1,5 @@
-use crate::domain::tool::{FreshnessPolicy, ToolCall, ToolResult};
+use crate::domain::tool::{FreshnessPolicy, ToolCall};
 use std::collections::HashMap;
-use tracing::{debug, info};
 
 pub struct Registry {
     tools: HashMap<String, ToolDefinition>,
@@ -113,34 +112,6 @@ impl Registry {
         None
     }
 
-    /// Zero-trust tool execution based on whitelist
-    pub fn execute_tool(&self, call: &ToolCall) -> ToolResult {
-        debug!("Tool handler executing: {}", call.name);
-
-        let output = match self.tools.get(&call.name) {
-            Some(def) => (def.handler)(&call.input),
-            None => Err("Tool implementation not found or unauthorized".to_string()),
-        };
-
-        match &output {
-            Ok(result) => {
-                info!(
-                    "Tool '{}' executed successfully, result length: {}",
-                    call.name,
-                    result.len()
-                );
-            }
-            Err(err) => {
-                info!("Tool '{}' execution failed: {}", call.name, err);
-            }
-        }
-
-        ToolResult {
-            name: call.name.clone(),
-            output,
-        }
-    }
-
     pub fn execute(&self, request: ToolExecutionRequest) -> ToolExecutionResult {
         match self.tools.get(&request.tool_name) {
             Some(def) => match (def.handler)(&request.input) {
@@ -202,25 +173,25 @@ mod tests {
     #[test]
     fn test_execute_known_tool() {
         let registry = Registry::new();
-        let call = ToolCall {
-            name: "get_current_time".to_string(),
+        let request = ToolExecutionRequest {
+            tool_name: "get_current_time".to_string(),
             input: "{}".to_string(),
         };
-        let res = registry.execute_tool(&call);
-        assert!(res.output.is_ok());
+        let res = registry.execute(request);
+        assert!(res.success);
     }
 
     #[test]
     fn test_execute_unregistered_tool() {
         let registry = Registry::new();
-        let call = ToolCall {
-            name: "arbitrary_shell".to_string(),
+        let request = ToolExecutionRequest {
+            tool_name: "arbitrary_shell".to_string(),
             input: "ls".to_string(),
         };
-        let res = registry.execute_tool(&call);
-        assert!(res.output.is_err());
+        let res = registry.execute(request);
+        assert!(!res.success);
         assert_eq!(
-            res.output.unwrap_err(),
+            res.error.unwrap(),
             "Tool implementation not found or unauthorized"
         );
     }
@@ -241,26 +212,26 @@ mod tests {
             })
             .unwrap();
 
-        let call = ToolCall {
-            name: "echo".to_string(),
+        let request = ToolExecutionRequest {
+            tool_name: "echo".to_string(),
             input: "hello".to_string(),
         };
-        let res = registry.execute_tool(&call);
-        assert!(res.output.is_ok());
-        assert_eq!(res.output.unwrap(), "echo: hello");
+        let res = registry.execute(request);
+        assert!(res.success);
+        assert_eq!(res.output, "echo: hello");
     }
 
     #[test]
     fn test_register_unknown_tool_still_fails() {
         let registry = Registry::new();
-        let call = ToolCall {
-            name: "unknown_tool".to_string(),
+        let request = ToolExecutionRequest {
+            tool_name: "unknown_tool".to_string(),
             input: "".to_string(),
         };
-        let res = registry.execute_tool(&call);
-        assert!(res.output.is_err());
+        let res = registry.execute(request);
+        assert!(!res.success);
         assert_eq!(
-            res.output.unwrap_err(),
+            res.error.unwrap(),
             "Tool implementation not found or unauthorized"
         );
     }
@@ -400,5 +371,59 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.output, "echo: hello");
         assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_execute_handler_returns_error() {
+        let mut registry = Registry::new();
+        registry
+            .register("failing_tool", FreshnessPolicy::Cacheable, |_: &str| {
+                Err("handler failure".to_string())
+            })
+            .unwrap();
+
+        let request = ToolExecutionRequest {
+            tool_name: "failing_tool".to_string(),
+            input: "test".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(!result.success);
+        assert_eq!(result.error.unwrap(), "handler failure");
+    }
+
+    #[test]
+    fn test_execute_handler_returns_empty_string() {
+        let mut registry = Registry::new();
+        registry
+            .register("empty_tool", FreshnessPolicy::Cacheable, |_: &str| {
+                Ok("".to_string())
+            })
+            .unwrap();
+
+        let request = ToolExecutionRequest {
+            tool_name: "empty_tool".to_string(),
+            input: "".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(result.success);
+        assert_eq!(result.output, "");
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_execute_unknown_tool_error_field_validation() {
+        let registry = Registry::new();
+        let request = ToolExecutionRequest {
+            tool_name: "unknown_tool".to_string(),
+            input: "test".to_string(),
+        };
+        let result = registry.execute(request);
+        assert!(!result.success);
+        assert!(result.error.is_some());
+        assert!(result.output.is_empty());
+        assert_eq!(
+            result.error.unwrap(),
+            "Tool implementation not found or unauthorized"
+        );
     }
 }

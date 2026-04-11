@@ -547,6 +547,39 @@ El objetivo es formalizar cómo se ejecutan las tools, no cambiar semántica de 
 
 ---
 
+# Phase 2.4 — Tool Execution Observability
+Status: PLANNED
+
+## Objetivo
+
+Introducir logging mínimo en el Tool Execution Layer para mejorar auditabilidad sin alterar comportamiento runtime.
+
+## Scope permitido
+
+- logging en ToolRegistry::execute()
+- log de:
+  - tool_name
+  - success/failure
+- no logging de payload completo
+- no cambio de structs
+- no cambio de ejecución
+
+## Scope prohibido
+
+- no tracing complejo
+- no métricas
+- no async logging
+- no cambios en executor
+
+## Acceptance
+
+- logs visibles en ejecución real
+- sin impacto en tests
+- sin cambio semántico
+- overhead mínimo
+
+---
+
 # Phase 2.1 — Safe Local Tool Contract
 Status: CLOSED
 
