@@ -548,7 +548,7 @@ El objetivo es formalizar cómo se ejecutan las tools, no cambiar semántica de 
 ---
 
 # Phase 2.4 — Tool Execution Observability
-Status: PLANNED
+Status: CLOSED
 
 ## Objetivo
 
@@ -577,6 +577,21 @@ Introducir logging mínimo en el Tool Execution Layer para mejorar auditabilidad
 - sin impacto en tests
 - sin cambio semántico
 - overhead mínimo
+
+---
+
+## Implementation
+
+- logging added in ToolRegistry::execute()
+- events:
+  - tool.execute.start
+  - tool.execute.success
+  - tool.execute.failure
+- implemented using tracing macros (debug, info, warn)
+- no runtime semantic changes
+- no impact on tests
+- minimal diff
+- aligned with existing logging infrastructure
 
 ---
 

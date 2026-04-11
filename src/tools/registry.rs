@@ -1,5 +1,6 @@
 use crate::domain::tool::{FreshnessPolicy, ToolCall};
 use std::collections::HashMap;
+use tracing::{debug, info, warn};
 
 pub struct Registry {
     tools: HashMap<String, ToolDefinition>,
@@ -113,7 +114,9 @@ impl Registry {
     }
 
     pub fn execute(&self, request: ToolExecutionRequest) -> ToolExecutionResult {
-        match self.tools.get(&request.tool_name) {
+        let name = &request.tool_name;
+        debug!("[tool.execute.start] name={}", name);
+        let result = match self.tools.get(name) {
             Some(def) => match (def.handler)(&request.input) {
                 Ok(output) => ToolExecutionResult {
                     success: true,
@@ -131,7 +134,15 @@ impl Registry {
                 output: String::new(),
                 error: Some("Tool implementation not found or unauthorized".to_string()),
             },
+        };
+        if result.success {
+            info!("[tool.execute.success] name={}", name);
+        } else if let Some(err) = &result.error {
+            warn!("[tool.execute.failure] name={} error={}", name, err);
+        } else {
+            warn!("[tool.execute.failure] name={}", name);
         }
+        result
     }
 }
 

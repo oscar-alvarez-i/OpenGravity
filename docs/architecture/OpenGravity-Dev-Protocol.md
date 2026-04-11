@@ -240,6 +240,22 @@ Never introduce:
 * hidden daemon behavior;
 * implicit persistent state.
 
+## Existing Infrastructure Rule
+
+Before introducing any new mechanism (even minimal), verify whether an equivalent capability already exists in the system.
+
+If it exists:
+
+- reuse the existing mechanism
+- do not introduce parallel implementations (e.g., println! vs tracing)
+- maintain consistency across modules
+
+Rationale:
+
+Parallel solutions increase hidden complexity, reduce auditability, and create long-term drift even if each instance is locally correct.
+
+This rule applies even when the new solution appears simpler or more minimal.
+
 ---
 
 # 9. Before Opening a New Chat
