@@ -120,6 +120,7 @@ pub fn execute_read(input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
 
     fn unique_path(suffix: &str) -> std::path::PathBuf {
@@ -253,23 +254,22 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_existing_file() {
         let path = resolve_note_path().unwrap();
         fs::remove_file(&path).ok();
 
         fs::write(&path, "line1 content").ok();
 
-        // Ensure read sees consistent state by revalidating path
-        validate_note_path(&path).ok();
-
-        let read_result = execute_read("");
-        assert!(read_result.is_ok());
-        assert!(read_result.unwrap().contains("line1"));
+        let result = execute_read("");
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("line1"));
 
         fs::remove_file(&path).ok();
     }
 
     #[test]
+    #[serial]
     fn test_read_file_not_exists() {
         let path = resolve_note_path().unwrap();
         fs::remove_file(&path).ok();
@@ -280,14 +280,12 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_empty_file() {
         let path = resolve_note_path().unwrap();
         fs::remove_file(&path).ok();
 
         fs::write(&path, "").ok();
-
-        // Ensure read sees consistent state by revalidating path
-        validate_note_path(&path).ok();
 
         let result = execute_read("");
         assert!(result.is_ok());
@@ -297,14 +295,12 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_multiple_lines() {
         let path = resolve_note_path().unwrap();
         fs::remove_file(&path).ok();
 
         fs::write(&path, "first\nsecond\nthird\n").ok();
-
-        // Ensure read sees consistent state by revalidating path
-        validate_note_path(&path).ok();
 
         let result = execute_read("");
         assert!(result.is_ok());
@@ -324,6 +320,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_symlink_rejected() {
         let path = resolve_note_path().unwrap();
         fs::remove_file(&path).ok();
