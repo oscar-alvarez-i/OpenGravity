@@ -43,6 +43,13 @@ impl Registry {
             )
             .unwrap();
         registry
+            .register(
+                "read_local_notes",
+                FreshnessPolicy::Cacheable,
+                super::local::execute_read,
+            )
+            .unwrap();
+        registry
     }
 
     pub fn freshness_policy(&self, tool_name: &str) -> FreshnessPolicy {
