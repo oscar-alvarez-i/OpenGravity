@@ -24,13 +24,14 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 ## HITO 2 — Personal Execution Layer (ACTIVE)
 
 - Phase 2.1: CLOSED
+- Phase 2.2: CLOSED
 - Tool disponible: write_local_note
 - Branch actual: phase-2-1-safe-local-tool-contract
-- Next: Phase 2.2
+- Next: Phase 2.3
 
 ---
 
-## Phase 2.2 — Tool Execution Layer (OPEN)
+## Phase 2.2 — Tool Execution Layer (CLOSED)
 
 ---
 
