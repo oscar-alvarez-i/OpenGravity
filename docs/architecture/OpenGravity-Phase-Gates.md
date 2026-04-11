@@ -640,6 +640,8 @@ Habilitar lectura segura del archivo local utilizado por write_local_note, cerra
 
 - lectura devuelve archivo completo sin límite de tamaño
 - no existe segmentación ni query de contenido
+- write_local_note recalcula current_dir() para determinar production path (redundante pero seguro)
+- optimización posible: reutilizar resultado de validate_note_path() en futuras phases
 
 ---
 
