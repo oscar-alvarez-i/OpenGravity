@@ -74,6 +74,35 @@ Audit happens before commit.
 
 ---
 
+## Step C.1 — External Code Review (Opencode / Codex)
+
+Before closing a phase, an additional independent code review must be performed.
+
+This review must:
+
+- analyze full diff of the phase
+- detect hidden bugs
+- detect unintended side effects
+- validate test coverage adequacy
+- highlight potential dead code or drift
+
+Accepted reviewers:
+
+- Opencode
+- Codex
+- equivalent static/code review system
+
+---
+
+### Rule
+
+A phase MUST NOT be closed unless:
+
+- external implementation audit is completed (Step C)
+- independent code review is completed (Step C.1)
+
+---
+
 ## Step D — Documentation Closure
 
 At phase close:

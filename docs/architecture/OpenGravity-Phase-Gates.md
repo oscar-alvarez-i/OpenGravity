@@ -476,7 +476,7 @@ Validar que el estado sensible del loop no persista stale entre conversaciones n
 ---
 
 # Phase 2.2 — Tool Execution Layer
-Status: OPEN
+Status: CLOSED
 
 ## Objetivo
 
@@ -536,6 +536,47 @@ El objetivo es formalizar cómo se ejecutan las tools, no cambiar semántica de 
 - ToolRegistry::execute() implemented as single execution entry point
 - Executor migrated to use ToolExecutionResult
 - Legacy execute_tool() remains temporarily for compatibility
+
+---
+
+## Known Limitations
+
+- Legacy function execute_tool() still present
+- Temporary dual execution path exists
+- Must be removed in Phase 2.3
+
+---
+
+# Phase 2.4 — Tool Execution Observability
+Status: PLANNED
+
+## Objetivo
+
+Introducir logging mínimo en el Tool Execution Layer para mejorar auditabilidad sin alterar comportamiento runtime.
+
+## Scope permitido
+
+- logging en ToolRegistry::execute()
+- log de:
+  - tool_name
+  - success/failure
+- no logging de payload completo
+- no cambio de structs
+- no cambio de ejecución
+
+## Scope prohibido
+
+- no tracing complejo
+- no métricas
+- no async logging
+- no cambios en executor
+
+## Acceptance
+
+- logs visibles en ejecución real
+- sin impacto en tests
+- sin cambio semántico
+- overhead mínimo
 
 ---
 
