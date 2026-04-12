@@ -397,7 +397,7 @@ Each phase must produce:
 
 Before starting any new phase:
 
-- Create phase branch (phase/X.Y-name)
+- **Create phase branch (phase/X.Y-name)** — MUST be created before any implementation begins, NO exceptions
 - Verify Active-State reflects previous phase closure
 - Define phase scope BEFORE coding
 - Validate no unresolved structural debt exists

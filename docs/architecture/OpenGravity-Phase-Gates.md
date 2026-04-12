@@ -659,7 +659,7 @@ Habilitar lectura segura del archivo local utilizado por write_local_note, cerra
 ---
 
 # Phase 2.6 — Filesystem IO Contract Closure
-Status: PENDING
+Status: CLOSED
 
 ## Objetivo
 
@@ -692,8 +692,10 @@ Unificar acceso IO a filesystem en un único punto interno reutilizable, elimina
 
 ## Implementation
 
-- Todas las operaciones filesystem usan validate_note_path()
-- resolve_note_path() reutilizado en todos los puntos de acceso
+- Introduced with_note_file() helper to centralize filesystem IO
+- Eliminated duplicated file open and IO handling logic
+- Preserved exact behavior and error semantics
+- validate_note_path() remains the single security validation point
 
 ---
 

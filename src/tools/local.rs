@@ -1,8 +1,49 @@
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 
 const NOTE_FILE: &str = "local_notes.txt";
+
+enum FileMode {
+    Read,
+    Append,
+}
+
+fn with_note_file<F, T>(path: &std::path::Path, mode: FileMode, op: F) -> Result<T, String>
+where
+    F: FnOnce(&mut std::fs::File) -> Result<T, std::io::Error>,
+{
+    validate_note_path(path)?;
+
+    let is_production_path = std::env::current_dir()
+        .map_err(|e| format!("Failed to get cwd: {}", e))?
+        .join(NOTE_FILE)
+        == path;
+
+    let mut opts = OpenOptions::new();
+    match (mode, is_production_path) {
+        (FileMode::Read, _) => {
+            opts.read(true).custom_flags(libc::O_NOFOLLOW);
+        }
+        (FileMode::Append, true) => {
+            opts.read(true)
+                .write(true)
+                .append(true)
+                .custom_flags(libc::O_NOFOLLOW);
+        }
+        (FileMode::Append, false) => {
+            opts.create(true)
+                .append(true)
+                .custom_flags(libc::O_NOFOLLOW);
+        }
+    }
+
+    let mut file = opts
+        .open(path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    op(&mut file).map_err(|e| format!("{}", e))
+}
 
 fn resolve_note_path() -> Result<std::path::PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
@@ -48,26 +89,8 @@ fn validate_note_path(path: &std::path::Path) -> Result<(), String> {
 fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String, String> {
     validate_note_path(path)?;
 
-    let is_production_path = path == std::env::current_dir().unwrap().join(NOTE_FILE);
-
-    let mut file = if is_production_path {
-        let mut opts = OpenOptions::new();
-        opts.read(true)
-            .write(true)
-            .append(true)
-            .custom_flags(libc::O_NOFOLLOW);
-        opts.open(path)
-            .map_err(|e| format!("Failed to open file: {}", e))?
-    } else {
-        let mut opts = OpenOptions::new();
-        opts.create(true)
-            .append(true)
-            .custom_flags(libc::O_NOFOLLOW);
-        opts.open(path)
-            .map_err(|e| format!("Failed to create file: {}", e))?
-    };
-
-    writeln!(file, "{}", input).map_err(|e| format!("Failed to write: {}", e))?;
+    with_note_file(path, FileMode::Append, |file| writeln!(file, "{}", input))
+        .map_err(|e| format!("Failed to write: {}", e))?;
 
     Ok("nota guardada".to_string())
 }
@@ -103,16 +126,11 @@ pub fn execute_read(input: &str) -> Result<String, String> {
         return Err("File not found".to_string());
     }
 
-    let mut opts = OpenOptions::new();
-    opts.read(true).custom_flags(libc::O_NOFOLLOW);
-    let mut file = opts
-        .open(&path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-
-    use std::io::Read;
     let mut content = String::new();
-    file.read_to_string(&mut content)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    with_note_file(&path, FileMode::Read, |file| {
+        file.read_to_string(&mut content)
+    })
+    .map_err(|e| format!("Failed to read file: {}", e))?;
 
     Ok(content)
 }
