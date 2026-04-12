@@ -658,7 +658,127 @@ Habilitar lectura segura del archivo local utilizado por write_local_note, cerra
 
 ---
 
-# Phase 2.1 — Safe Local Tool Contract
+# Phase 2.6 — Filesystem IO Contract Closure
+Status: PENDING
+
+## Objetivo
+
+Unificar acceso IO a filesystem en un único punto interno reutilizable, eliminando duplicación de lógica de path.
+
+## Scope permitido
+
+- Factorización de helpers internos de IO
+- Reutilizar resolve_note_path() y validate_note_path() para todas las operaciones filesystem
+- Shared path contract entre read y write
+
+## Scope prohibido
+
+- Nuevas features de filesystem
+- Multi-file support
+- Cambios en tool behavior
+- Cambios en executor/planner
+
+## Acceptance
+
+- Sin duplicación de IO logic
+- Comportamiento idéntico al actual
+- tests green
+- validación mínima obligatoria pasa
+
+## Implementation
+
+- Todas las operaciones filesystem usan validate_note_path()
+- resolve_note_path() reutilizado en todos los puntos de acceso
+
+---
+
+# Phase 2.7 — Tool Execution Path Cleanup
+Status: PENDING
+
+## Objetivo
+
+Eliminar path legacy execute_tool() y consolidar uso exclusivo de ToolRegistry::execute().
+
+## Scope permitido
+
+- Remover implementación legacy de execute_tool()
+- Asegurar ToolRegistry::execute() como único entry point
+
+## Scope prohibido
+
+- Cambios en semántica de ejecución
+- Cambios en executor
+- Nuevos paths de ejecución
+
+## Acceptance
+
+- Single execution path
+- Sin regresión funcional
+- tests green
+
+## Known Limitations
+
+- execute_tool() existe temporalmente (deuda explícita)
+
+---
+
+# Phase 2.8 — Local Tool Error Contract
+Status: PENDING
+
+## Objetivo
+
+Formalizar contrato de errores de tools locales con definición explícita de casos de error.
+
+## Scope permitido
+
+- Definición explícita de tipos de error:
+  - archivo inexistente
+  - input inválido
+  - error de IO
+- Tests que validan contratos de error
+
+## Scope prohibido
+
+- Cambiar comportamiento existente
+- Nuevos tipos de error no documentados
+- Cambios en executor
+
+## Acceptance
+
+- Todos los errores posibles documentados
+- Tests cubren paths de error
+- Comportamiento idéntico al actual
+
+---
+
+# Phase 2.9 — Personal Execution Layer Certification
+Status: PENDING
+
+## Objetivo
+
+Cerrar formalmente el HITO 2 con documentación completa de contratos finales.
+
+## Scope permitido
+
+- Documentación de contratos finales
+- Explicitación de limitaciones conocidas
+- Tests faltantes para coverage completo
+
+## Scope prohibido
+
+- Nuevas features
+- Cambios arquitecturales
+
+## Acceptance
+
+- No deuda implícita
+- Sistema auditado
+- Listo para cierre de hito
+- Documentación completa en Phase-Gates y Active-State
+
+---
+
+# Regla final de cierre
 Status: CLOSED
 
 ## Objetivo

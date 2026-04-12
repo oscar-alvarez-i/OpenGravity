@@ -23,15 +23,92 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 ## HITO 2 — Personal Execution Layer (ACTIVE)
 
-- Phase 2.1: CLOSED
-- Phase 2.2: CLOSED
-- Phase 2.5: CLOSED
-- Tools disponibles:
+- Phase 2.1: CLOSED (write_local_note)
+- Phase 2.2: CLOSED (Tool Execution Layer)
+- Phase 2.4: CLOSED (observability)
+- Phase 2.5: CLOSED (read_local_notes)
+- Phase 2.6: PENDING (Filesystem IO Contract Closure)
+- Phase 2.7: PENDING (Tool Execution Path Cleanup)
+- Phase 2.8: PENDING (Local Tool Error Contract)
+- Phase 2.9: PENDING (HITO Certification)
+
+Tools disponibles:
   - write_local_note
   - read_local_notes
 - Acceso local completo: write + read sobre archivo sandboxed
-- Branch actual: phase/2.5-local-read-capability
+- Branch actual: main (workflow mergeado)
 - Next: Phase 2.6
+
+---
+
+## Phase 2.6 — Filesystem IO Contract Closure (PENDING)
+
+## Objetivo
+
+Unificar acceso IO a filesystem en único punto interno.
+
+## Scope
+
+- Factorización de helpers internos
+- Reutilizar resolve_note_path() y validate_note_path()
+
+## Acceptance
+
+- Sin duplicación
+- tests green
+- validación mínima pasa
+
+---
+
+## Phase 2.7 — Tool Execution Path Cleanup (PENDING)
+
+## Objetivo
+
+Eliminar execute_tool() legacy, usar solo ToolRegistry::execute()
+
+## Acceptance
+
+- Single execution path
+- sin regresión
+
+---
+
+## Phase 2.8 — Local Tool Error Contract (PENDING)
+
+## Objetivo
+
+Formalizar contrato de errores de tools locales.
+
+## Scope
+
+- archivo inexistente
+- input inválido
+- error de IO
+
+## Acceptance
+
+- errores documentados
+- tests de error coverage
+
+---
+
+## Phase 2.9 — HITO 2 Certification (PENDING)
+
+## Objetivo
+
+Cierre formal del HITO 2.
+
+## Scope
+
+- documentación de contratos finales
+- explicitación de limitaciones
+- tests faltantes
+
+## Acceptance
+
+- sin deuda implícita
+- sistema auditado
+- listo para cierre
 
 ---
 
