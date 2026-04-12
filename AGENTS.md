@@ -88,7 +88,6 @@ Before any patch task:
 1. Read `docs/architecture/OpenGravity-Active-State.md` first
 2. Infer active phase explicitly
 3. Reject scope if phase unclear
-4. Use `docs/architecture/OpenGravity-Patch-Template.md` as mandatory task frame
 
 ---
 
@@ -173,11 +172,18 @@ Before any patch task:
 
 # Architecture References
 
-Primary technical references:
+**Documentos activos de seguimiento del proyecto:**
 
-* `docs/ARCHITECTURE.md`
-* `docs/KNOWN_FRAGILITIES.md`
-* `docs/PHASES.md`
+* `docs/architecture/OpenGravity-Phase-Gates.md` — Definición de phases con status (CLOSED/PENDING)
+* `docs/architecture/OpenGravity-Active-State.md` — Estado actual del sistema y próximos trabajos
+* `docs/architecture/OpenGravity-Roadmap.md` — Roadmap futuro
+* `docs/architecture/OpenGravity-Dev-Protocol.md` — Protocolo operativo
+* `docs/architecture/OpenGravity-Debug-Discipline.md` — Disciplina de debugging
+* `docs/PHASES.md` — Historial global de phases
+
+**Estado actual del proyecto:**
+- HITO 1 (Autonomous Runtime): CLOSED
+- HITO 2 (Personal Execution Layer): ACTIVO (Phase 2.6-2.9 pending)
 
 ---
 
