@@ -27,7 +27,7 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 - Phase 2.2: CLOSED (Tool Execution Layer)
 - Phase 2.4: CLOSED (observability)
 - Phase 2.5: CLOSED (read_local_notes)
-- Phase 2.6: PENDING (Filesystem IO Contract Closure)
+- Phase 2.6: CLOSED (Filesystem IO Contract Closure)
 - Phase 2.7: PENDING (Tool Execution Path Cleanup)
 - Phase 2.8: PENDING (Local Tool Error Contract)
 - Phase 2.9: PENDING (HITO Certification)
@@ -37,11 +37,11 @@ Tools disponibles:
   - read_local_notes
 - Acceso local completo: write + read sobre archivo sandboxed
 - Branch actual: main (workflow mergeado)
-- Next: Phase 2.6
+- Next: Phase 2.7
 
 ---
 
-## Phase 2.6 — Filesystem IO Contract Closure (PENDING)
+## Phase 2.6 — Filesystem IO Contract Closure (CLOSED)
 
 ## Objetivo
 
