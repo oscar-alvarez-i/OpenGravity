@@ -120,6 +120,8 @@ pub fn execute_read(input: &str) -> Result<String, String> {
 
     let path = resolve_note_path()?;
 
+    validate_note_path(&path)?;
+
     if !path.exists() {
         return Err("File not found".to_string());
     }
