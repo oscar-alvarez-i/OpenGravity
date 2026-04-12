@@ -678,6 +678,11 @@ Unificar acceso IO a filesystem en un único punto interno reutilizable, elimina
 - Cambios en tool behavior
 - Cambios en executor/planner
 
+## Constraints adicionales
+
+- No introducir capa de abstracción genérica de filesystem
+- Limitarse a helpers internos mínimos específicos para local_notes
+
 ## Acceptance
 
 - Sin duplicación de IO logic
@@ -709,6 +714,10 @@ Eliminar path legacy execute_tool() y consolidar uso exclusivo de ToolRegistry::
 - Cambios en semántica de ejecución
 - Cambios en executor
 - Nuevos paths de ejecución
+
+## Constraints adicionales
+
+- ToolRegistry::execute() no puede cambiar firma ni semántica
 
 ## Acceptance
 
@@ -743,6 +752,11 @@ Formalizar contrato de errores de tools locales con definición explícita de ca
 - Nuevos tipos de error no documentados
 - Cambios en executor
 
+## Constraints adicionales
+
+- El contrato de errores debe reflejar comportamiento actual
+- No modificar comportamiento runtime existente
+
 ## Acceptance
 
 - Todos los errores posibles documentados
@@ -768,6 +782,11 @@ Cerrar formalmente el HITO 2 con documentación completa de contratos finales.
 
 - Nuevas features
 - Cambios arquitecturales
+
+## Constraints adicionales
+
+- No duplicar documentación existente
+- Solo documentar gaps no cubiertos
 
 ## Acceptance
 
