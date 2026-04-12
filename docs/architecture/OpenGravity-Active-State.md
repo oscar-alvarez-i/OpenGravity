@@ -28,7 +28,7 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 - Phase 2.4: CLOSED (observability)
 - Phase 2.5: CLOSED (read_local_notes)
 - Phase 2.6: CLOSED (Filesystem IO Contract Closure)
-- Phase 2.7: PENDING (Tool Execution Path Cleanup)
+- Phase 2.7: CLOSED (Tool Execution Path Cleanup)
 - Phase 2.8: PENDING (Local Tool Error Contract)
 - Phase 2.9: PENDING (HITO Certification)
 
@@ -60,7 +60,7 @@ Unificar acceso IO a filesystem en único punto interno.
 
 ---
 
-## Phase 2.7 — Tool Execution Path Cleanup (PENDING)
+## Phase 2.7 — Tool Execution Path Cleanup (CLOSED)
 
 ## Objetivo
 
@@ -70,6 +70,11 @@ Eliminar execute_tool() legacy, usar solo ToolRegistry::execute()
 
 - Single execution path
 - sin regresión
+
+---
+- Verified: no legacy execute_tool() present in codebase
+- Tool execution path is fully unified via ToolRegistry::execute()
+- No code changes were required for this phase
 
 ---
 
