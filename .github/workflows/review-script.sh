@@ -16,8 +16,6 @@ PROMPT_CONTENT=$(cat .github/workflows/claude-review-prompt.md)
 # 3 Build full prompt with diff
 FULL_PROMPT="$PROMPT_CONTENT
 
----
-
 $PR_DIFF"
 
 # 4 Call OpenRouter
@@ -41,9 +39,7 @@ ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // empty')
 if [ -n "$ERROR_MSG" ]; then
   case "$ERROR_CODE" in
     "rate_limit_exceeded"|"insufficient_quota"|"daily_limit_reached")
-      gh pr comment "$PR_NUM" --body "⚠️ Claude review failed: $ERROR_MSG
-
-El límite de la API gratuita se ha alcanzado. Por favor, inténtalo de nuevo más tarde."
+      gh pr comment "$PR_NUM" --body "⚠️ Claude review failed: Rate limit reached. Try again later."
       ;;
     *)
       gh pr comment "$PR_NUM" --body "Error from Claude API: $ERROR_MSG"
@@ -57,7 +53,7 @@ CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 
 # 7 Check response
 if [ -z "$CONTENT" ]; then
-  gh pr comment "$PR_NUM" --body "Error: Claude review failed to generate response. Please try again."
+  gh pr comment "$PR_NUM" --body "Error: Claude review failed to generate response."
   exit 1
 fi
 
