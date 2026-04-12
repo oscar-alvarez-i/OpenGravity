@@ -42,7 +42,7 @@ where
         .open(path)
         .map_err(|e| format!("Failed to open file: {}", e))?;
 
-    op(&mut file).map_err(|e| format!("IO error: {}", e))
+    op(&mut file).map_err(|e| format!("{}", e))
 }
 
 fn resolve_note_path() -> Result<std::path::PathBuf, String> {
@@ -89,7 +89,8 @@ fn validate_note_path(path: &std::path::Path) -> Result<(), String> {
 fn write_to_path_internal(input: &str, path: &std::path::Path) -> Result<String, String> {
     validate_note_path(path)?;
 
-    with_note_file(path, FileMode::Append, |file| writeln!(file, "{}", input))?;
+    with_note_file(path, FileMode::Append, |file| writeln!(file, "{}", input))
+        .map_err(|e| format!("Failed to write: {}", e))?;
 
     Ok("nota guardada".to_string())
 }
@@ -126,7 +127,8 @@ pub fn execute_read(input: &str) -> Result<String, String> {
     let mut content = String::new();
     with_note_file(&path, FileMode::Read, |file| {
         file.read_to_string(&mut content)
-    })?;
+    })
+    .map_err(|e| format!("Failed to read file: {}", e))?;
 
     Ok(content)
 }
