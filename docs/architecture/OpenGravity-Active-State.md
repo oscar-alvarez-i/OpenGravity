@@ -29,7 +29,7 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 - Phase 2.5: CLOSED (read_local_notes)
 - Phase 2.6: CLOSED (Filesystem IO Contract Closure)
 - Phase 2.7: CLOSED (Tool Execution Path Cleanup)
-- Phase 2.8: PENDING (Local Tool Error Contract)
+- Phase 2.8: CLOSED (Local Tool Error Contract)
 - Phase 2.9: PENDING (HITO Certification)
 
 Tools disponibles:
@@ -37,7 +37,7 @@ Tools disponibles:
   - read_local_notes
 - Acceso local completo: write + read sobre archivo sandboxed
 - Branch actual: main (workflow mergeado)
-- Next: Phase 2.7
+- Next: Phase 2.9
 
 ---
 
@@ -78,7 +78,7 @@ Eliminar execute_tool() legacy, usar solo ToolRegistry::execute()
 
 ---
 
-## Phase 2.8 — Local Tool Error Contract (PENDING)
+## Phase 2.8 — Local Tool Error Contract (CLOSED)
 
 ## Objetivo
 
@@ -92,8 +92,17 @@ Formalizar contrato de errores de tools locales.
 
 ## Acceptance
 
-- errores documentados
-- tests de error coverage
+- errores documentados ✓
+- tests de error coverage ✓
+
+## Implementation
+
+- Full error surface mapped for write_local_note and read_local_notes
+- Tests added:
+  - test_read_invalid_path_outside_cwd: path outside cwd validation
+  - test_read_invalid_path_is_directory: directory at file path validation
+- IO errors documented as non-deterministically testable
+- All 246 tests pass
 
 ---
 
