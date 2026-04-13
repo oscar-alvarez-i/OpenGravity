@@ -331,6 +331,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_input_not_allowed() {
         let result = execute_read("some input");
         assert!(result.is_err());
@@ -357,6 +358,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_read_invalid_path_outside_cwd() {
         let cwd = std::env::current_dir().unwrap();
         let parent_dir = match cwd.parent() {
