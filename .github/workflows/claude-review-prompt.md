@@ -22,6 +22,18 @@ Review the PR diff below and find ACTUAL bugs. You can only see the diff - no ac
 - Hypothetical problems not in the diff
 - Files/dependencies not in the diff
 - Documentation issues
+- GitHub Actions secrets using `${{ secrets.* }}` syntax (not hardcoded)
+
+### Tests Code Rules
+
+**DO NOT flag** in test files (`tests/`, `#[cfg(test)]`, `mod tests`):
+- `unwrap()` / `expect()` / `unwrap_err()` - Tests are NOT hot paths
+- String literals for error message assertions - Intentional for exact match
+- Constants for error messages - Not required in tests
+
+**ONLY flag** in production code:
+- `unwrap()` / `expect()` outside of tests
+- Hardcoded secrets, API keys, tokens
 
 ---
 
