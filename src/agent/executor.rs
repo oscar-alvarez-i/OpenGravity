@@ -6,7 +6,7 @@ use crate::skills::registry::SkillRegistry;
 use crate::tools::registry::{Registry, ToolExecutionRequest};
 use anyhow::Result;
 use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct StepResult {
@@ -503,8 +503,33 @@ impl<'a> Executor<'a> {
                 ));
             }
 
+            // IDEMPOTENCY CHECK: block if same tool+input was already executed
+            // Check in message history (not internal state)
+            let tool_fingerprint = format!("{}:{}", tool_call.name, tool_call.input);
+            let was_executed = messages.iter().rev().any(|m| {
+                m.role == Role::Tool
+                    && m.content.contains("Tool result available:")
+                    && m.content.contains(&tool_fingerprint)
+            });
+
+            if was_executed {
+                let assistant_content = Self::extract_assistant_text(&response_text);
+                let idempotent_msg = if !assistant_content.is_empty() {
+                    assistant_content
+                } else {
+                    "La acción ya fue ejecutada anteriormente.".to_string()
+                };
+                info!(
+                    "Branch: tool exit, tool=idempotent_blocked, tool={}, input={}",
+                    tool_call.name, tool_call.input
+                );
+                return Ok(StepResult::new(
+                    vec![Message::new(Role::Assistant, idempotent_msg)],
+                    false,
+                ));
+            }
+
             // VALIDATE: reject write_local_note if user message was multiline
-            // Invariant: write_local_note must be single-line, independent of LLM
             if tool_call.name == "write_local_note" {
                 if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
                     let user_content = user_msg.content.as_str();
@@ -521,38 +546,6 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            let mut tool_line_found = false;
-            let mut trailing_content = Vec::new();
-
-            for line in response_text.lines() {
-                if !tool_line_found {
-                    if line.trim_start().starts_with("TOOL:") {
-                        tool_line_found = true;
-                    }
-                } else if !line.trim().is_empty() {
-                    trailing_content.push(line);
-                }
-            }
-
-            if !trailing_content.is_empty() {
-                warn!(
-                    "TOOL protocol violation: Content found after TOOL call: {:?}",
-                    trailing_content
-                );
-            }
-
-            if self.should_block_identical_replay(&tool_call.name) {
-                let assistant_content = Self::extract_assistant_text(&response_text);
-                info!(
-                    "Branch: tool exit, tool=blocked_identical_replay, elapsed={:?}",
-                    tool_branch_start.elapsed()
-                );
-                return Ok(StepResult::new(
-                    vec![Message::new(Role::Assistant, assistant_content)],
-                    false,
-                ));
-            }
-
             let request = ToolExecutionRequest {
                 tool_name: tool_call.name.clone(),
                 input: tool_call.input.clone(),
@@ -563,7 +556,7 @@ impl<'a> Executor<'a> {
                 false => format!("Tool execution error: {}", tool_res.error.unwrap_or_default()),
             };
 
-            self.last_tool_executed = Some(tool_call.name);
+            self.last_tool_executed = Some(tool_call.name.clone());
 
             info!("Returning Tool message containing execution output.");
             info!(
@@ -721,6 +714,137 @@ mod tests {
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].role, Role::Assistant);
+    }
+
+    #[tokio::test]
+    async fn test_executor_idempotent_blocks_duplicate_tool_same_input() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:hola mundo".to_string()) })
+            });
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:hola mundo".to_string()) })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages1 = vec![Message::new(Role::User, "Guardá: hola mundo")];
+        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+
+        assert!(result1.should_continue);
+        assert_eq!(result1.messages[0].role, Role::Tool);
+        assert!(result1.messages[0].content.contains("nota guardada"));
+
+        let messages2 = vec![
+            Message::new(Role::User, "Guardá: hola mundo"),
+            result1.messages[0].clone(),
+        ];
+        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+
+        assert!(!result2.should_continue);
+        assert_eq!(result2.messages[0].role, Role::Assistant);
+    }
+
+    #[tokio::test]
+    async fn test_executor_idempotent_allows_different_input() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:primer mensaje".to_string()) })
+            });
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:segundo mensaje".to_string()) })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        // First turn
+        let messages1 = vec![Message::new(Role::User, "Guardá: primer mensaje")];
+        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+
+        assert!(result1.should_continue, "First execution should continue");
+        assert_eq!(result1.messages[0].role, Role::Tool);
+
+        // Second turn - include previous messages
+        let messages2 = vec![
+            Message::new(Role::User, "Guardá: segundo mensaje"),
+            result1.messages[0].clone(),
+        ];
+        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+
+        // Should execute because input is different
+        assert!(
+            result2.should_continue,
+            "Different input should allow execution"
+        );
+        assert_eq!(
+            result2.messages[0].role,
+            Role::Tool,
+            "Should return Tool message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_executor_idempotent_allows_different_tool() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:write_local_note:hola".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        // First turn - get_current_time
+        let messages1 = vec![Message::new(Role::User, "qué hora es")];
+        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+
+        assert!(result1.should_continue, "First execution should continue");
+        assert_eq!(result1.messages[0].role, Role::Tool);
+
+        // Second turn - write_local_note (different tool)
+        let messages2 = vec![
+            Message::new(Role::User, "Guardá: hola"),
+            result1.messages[0].clone(),
+        ];
+        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+
+        // Should execute because different tool
+        assert!(
+            result2.should_continue,
+            "Different tool should allow execution"
+        );
+        assert_eq!(
+            result2.messages[0].role,
+            Role::Tool,
+            "Should return Tool message"
+        );
     }
 
     #[tokio::test]
