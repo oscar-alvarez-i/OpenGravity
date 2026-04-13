@@ -741,7 +741,7 @@ none
 ---
 
 # Phase 2.8 — Local Tool Error Contract
-Status: PENDING
+Status: CLOSED
 
 ## Objetivo
 
@@ -768,9 +768,22 @@ Formalizar contrato de errores de tools locales con definición explícita de ca
 
 ## Acceptance
 
-- Todos los errores posibles documentados
-- Tests cubren paths de error
-- Comportamiento idéntico al actual
+- Todos los errores posibles documentados ✓
+- Tests cubren paths de error ✓
+- Comportamiento idéntico al actual ✓
+
+## Implementation
+
+- Full error surface mapped for write_local_note and read_local_notes
+- Error categories documented:
+  - input invalid
+  - path validation failure
+  - file not found (read only)
+  - IO errors (passthrough)
+- Tests added for:
+  - invalid path (outside cwd)
+  - invalid path (directory)
+- IO errors documented as non-deterministically testable
 
 ---
 
