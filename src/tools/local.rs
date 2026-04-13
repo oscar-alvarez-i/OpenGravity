@@ -355,4 +355,42 @@ mod tests {
         fs::remove_file(&target).ok();
         fs::remove_file(&path).ok();
     }
+
+    #[test]
+    fn test_read_invalid_path_outside_cwd() {
+        let cwd = std::env::current_dir().unwrap();
+        let parent_dir = match cwd.parent() {
+            Some(p) => p.to_path_buf(),
+            None => cwd.clone(),
+        };
+        let outside_path = parent_dir.join("local_notes.txt");
+
+        fs::remove_file(&outside_path).ok();
+
+        let validation_result = validate_note_path(&outside_path);
+        assert!(validation_result.is_err());
+        assert!(validation_result
+            .unwrap_err()
+            .contains("Invalid target directory"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_invalid_path_is_directory() {
+        let file_path = resolve_note_path().unwrap();
+        fs::remove_file(&file_path).ok();
+        fs::create_dir_all(&file_path).unwrap();
+
+        let result = execute_read("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Target is not a regular file"));
+
+        fs::remove_dir_all(&file_path).ok();
+    }
+
+    // Note: The following error cases cannot be deterministically simulated in the current architecture:
+    // - IO error during write (disk full, permission denied, etc.)
+    // - IO error during read (disk full, permission denied, etc.)
+    // These would require mocking the filesystem or inducing hardware errors,
+    // which is not feasible in unit tests without changing the runtime behavior.
 }
