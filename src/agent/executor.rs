@@ -552,7 +552,7 @@ impl<'a> Executor<'a> {
             );
             return Ok(StepResult::new(
                 vec![Message::new(Role::Tool, tool_output_text)],
-                true,
+                tool_res.success,
             ));
         }
 
@@ -591,7 +591,7 @@ mod tests {
         let msgs = result.messages;
         let should_continue = result.should_continue;
 
-        assert!(should_continue);
+        assert!(!should_continue);
         let last_msg = msgs.last().unwrap();
         assert_eq!(last_msg.role, Role::Tool);
         assert!(last_msg
@@ -1058,7 +1058,7 @@ mod tests {
 
         let result = executor.execute_step("sys", &messages).await.unwrap();
 
-        assert!(result.should_continue);
+        assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].role, Role::Tool);
         assert!(result.messages[0].content.contains("Tool execution error"));
@@ -1723,7 +1723,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let result1 = executor.execute_step("sys", &[]).await.unwrap();
-        assert!(result1.should_continue);
+        assert!(!result1.should_continue, "Tool failure should not continue");
         assert_eq!(result1.messages[0].role, Role::Tool);
 
         let result2 = executor

@@ -26,7 +26,8 @@ where
             opts.read(true).custom_flags(libc::O_NOFOLLOW);
         }
         (FileMode::Append, true) => {
-            opts.read(true)
+            opts.create(true)
+                .read(true)
                 .write(true)
                 .append(true)
                 .custom_flags(libc::O_NOFOLLOW);

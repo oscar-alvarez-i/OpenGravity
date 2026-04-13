@@ -810,6 +810,9 @@ async fn probe_memory_overwrite_tool_recall() -> Result<()> {
  * Scenario:
  * Three turns in same conversation with tool calls
  * Context should compact to latest assistant block only
+ *
+ * Note: Uses get_current_time (AlwaysFresh) which bypasses duplicate prevention.
+ * This test verifies context compression behavior.
  */
 #[tokio::test]
 async fn probe_multiple_assistant_tool_alternation() -> Result<()> {
@@ -837,7 +840,7 @@ async fn probe_multiple_assistant_tool_alternation() -> Result<()> {
         .expect_generate_response()
         .times(1)
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok("TOOL:get_weather".to_string()));
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
     mock_llm
         .expect_generate_response()
         .times(1)
