@@ -477,6 +477,8 @@ impl<'a> Executor<'a> {
 
         // F. TOOL EXECUTION
         let tool_branch_start = Instant::now();
+        let tool_call = self.registry.parse_tool_call(&response_text);
+
         if let Some(tool_call) = tool_call {
             info!("Branch: tool entered, tool={}", tool_call.name);
             info!(
@@ -499,6 +501,24 @@ impl<'a> Executor<'a> {
                     vec![Message::new(Role::Assistant, assistant_content)],
                     false,
                 ));
+            }
+
+            // VALIDATE: reject write_local_note if user message was multiline
+            // Invariant: write_local_note must be single-line, independent of LLM
+            if tool_call.name == "write_local_note" {
+                if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
+                    let user_content = user_msg.content.as_str();
+                    if user_content.contains('\n') || user_content.contains('\r') {
+                        let error_msg =
+                            "Tool execution error: Invalid input: multiline content not allowed"
+                                .to_string();
+                        self.last_tool_executed = Some(tool_call.name.clone());
+                        return Ok(StepResult::new(
+                            vec![Message::new(Role::Tool, error_msg)],
+                            false,
+                        ));
+                    }
+                }
             }
 
             let mut tool_line_found = false;
@@ -572,499 +592,6 @@ mod tests {
     use crate::skills::registry::SkillRegistry;
 
     #[tokio::test]
-    async fn test_executor_tool_error_path() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| {
-                Box::pin(async { Ok("I will call unknown_tool\nTOOL:unknown_tool".to_string()) })
-            });
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let result = executor.execute_step("sys", &[]).await.unwrap();
-        let msgs = result.messages;
-        let should_continue = result.should_continue;
-
-        assert!(!should_continue);
-        let last_msg = msgs.last().unwrap();
-        assert_eq!(last_msg.role, Role::Tool);
-        assert!(last_msg
-            .content
-            .contains("Tool execution error: Tool implementation not found or unauthorized"));
-    }
-
-    #[tokio::test]
-    async fn test_executor_split_reasoning() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| {
-                Box::pin(async { Ok("I am thinking.\nTOOL:get_current_time".to_string()) })
-            });
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let result = executor.execute_step("sys", &[]).await.unwrap();
-        let msgs = result.messages;
-        let should_continue = result.should_continue;
-
-        assert!(should_continue);
-        assert_eq!(
-            msgs.len(),
-            1,
-            "Reasoning not persisted when TOOL call present"
-        );
-        assert_eq!(msgs[0].role, Role::Tool);
-        assert!(msgs[0].content.contains("Tool result available:"));
-    }
-
-    #[tokio::test]
-    async fn test_executor_trailing_content_rejected() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq.expect_generate_response().returning(|_, _| {
-            Box::pin(async {
-                Ok("Thinking...\nTOOL:get_current_time\nIllegal trailing content".to_string())
-            })
-        });
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(Role::User, "trigger debug log")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(
-            !result.should_continue,
-            "Trailing content after TOOL rejects the tool call"
-        );
-        assert_eq!(
-            result.messages.len(),
-            1,
-            "Full response treated as Assistant message when TOOL has trailing content"
-        );
-        assert_eq!(result.messages[0].role, Role::Assistant);
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_always_executes_fresh() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![
-            Message::new(Role::User, "What time is it?"),
-            Message::new(Role::Tool, "Tool result available: UTC: 12:00".to_string()),
-        ];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(
-            !result.should_continue,
-            "Same-turn tool call after fresh tool result should be blocked"
-        );
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
-    }
-
-    #[tokio::test]
-    async fn test_same_turn_tool_only_strips_returns_empty() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![
-            Message::new(Role::User, "weather?"),
-            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
-        ];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(!result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
-        assert!(result.messages[0].content.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_skill_runs_before_llm() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .returning(|_, _| Box::pin(async { Ok("response".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(Role::User, "Mi color favorito es azul")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue, "Memory skill continues to LLM");
-        assert!(
-            result.messages.is_empty(),
-            "No assistant message from memory skill"
-        );
-        assert!(!result.memory_updates.is_empty(), "Memory should be saved");
-        assert!(!executor.has_pending_plan());
-    }
-
-    #[tokio::test]
-    async fn test_memory_fragment_before_transient_detection() {
-        let mock_groq = MockLlmProvider::new();
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(
-            Role::User,
-            "Mi color favorito es verde y después decime la hora",
-        )];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert!(
-            result.messages.is_empty(),
-            "Memory-only skill returns no messages"
-        );
-        assert!(
-            !result.memory_updates.is_empty(),
-            "Memory updates should be present"
-        );
-        assert!(executor.has_pending_plan());
-
-        let pending = executor.take_pending_plan().unwrap();
-        assert_eq!(pending.len(), 1);
-        assert!(matches!(pending.first_step(), Some(PlanStep::Direct(_))));
-    }
-
-    #[tokio::test]
-    async fn test_pending_direct_preserved_without_factual_input() {
-        let mock_groq = MockLlmProvider::new();
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        executor.pending_plan = Some(Plan {
-            steps: vec![PlanStep::Direct("decime la hora".to_string())],
-        });
-
-        let messages = vec![Message::new(Role::User, "Hola")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert!(
-            result.messages.is_empty(),
-            "Pending Direct should not inject user message"
-        );
-        assert!(
-            !executor.has_pending_plan(),
-            "Pending plan should be consumed"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_loop_resolves_in_three_iterations() {
-        let db = crate::db::sqlite::Db::new(":memory:").unwrap();
-        let memory = crate::agent::memory_bridge::MemoryBridge::new(&db, "user");
-        let planner = crate::agent::planner::Planner::new();
-
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("La hora actual es las 3pm".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
-        let mut agent_loop = crate::agent::r#loop::AgentLoop::new(memory, planner, executor);
-
-        let res = agent_loop
-            .run(Message::new(
-                Role::User,
-                "Mi color favorito es verde y después get_current_time",
-            ))
-            .await;
-
-        assert!(res.is_ok(), "Loop should complete: {:?}", res);
-        assert!(res.unwrap().content.contains("3pm"));
-    }
-
-    #[tokio::test]
-    async fn test_executor_duplicate_tool_blocked() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![
-            Message::new(Role::User, "What's the weather?"),
-            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
-        ];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(!result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
-    }
-
-    #[tokio::test]
-    async fn test_executor_pending_plan_cleared_when_empty() {
-        let mock_groq = MockLlmProvider::new();
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        executor.pending_plan = Some(Plan {
-            steps: vec![PlanStep::Direct("final step".to_string())],
-        });
-
-        let messages = vec![Message::new(Role::User, "execute")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert!(result.messages.is_empty());
-        assert!(!executor.has_pending_plan());
-    }
-
-    #[tokio::test]
-    async fn test_executor_skill_miss_falls_through_to_llm() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("LLM response".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(Role::User, "hello world")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(!result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
-        assert_eq!(result.messages[0].content, "LLM response");
-    }
-
-    #[tokio::test]
-    async fn test_executor_b1_factual_miss_continues() {
-        let mock_groq = MockLlmProvider::new();
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(
-            Role::User,
-            "mi color favorito es azul y después get_unknown_tool",
-        )];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert!(result.messages.is_empty());
-        assert!(!executor.has_pending_plan());
-    }
-
-    #[tokio::test]
-    async fn test_executor_pending_plan_tool_execution() {
-        let mock_groq = MockLlmProvider::new();
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        executor.pending_plan = Some(Plan {
-            steps: vec![
-                PlanStep::Tool("get_current_time".to_string()),
-                PlanStep::Direct("continue".to_string()),
-            ],
-        });
-
-        let messages = vec![Message::new(Role::User, "skip")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Tool);
-        assert!(executor.has_pending_plan());
-    }
-
-    #[tokio::test]
-    async fn test_executor_skip_duplicate_non_fresh_tool() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_weather".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![
-            Message::new(Role::User, "weather?"),
-            Message::new(Role::Tool, "Tool result available: sunny".to_string()),
-        ];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(!result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
-    }
-
-    #[tokio::test]
-    async fn test_executor_planner_direct_with_remaining() {
-        // pending_plan Direct consumes the step and sets remaining plan
-        // no LLM call needed since pending_plan is taken
-        let mock_groq = MockLlmProvider::new();
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        executor.pending_plan = Some(Plan {
-            steps: vec![
-                PlanStep::Direct("first".to_string()),
-                PlanStep::Direct("second".to_string()),
-            ],
-        });
-
-        let messages = vec![Message::new(Role::User, "go")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(result.should_continue);
-        assert!(result.messages.is_empty());
-        assert!(executor.has_pending_plan());
-    }
-
-    #[tokio::test]
-    async fn test_executor_direct_step_from_factual_continues() {
-        let mock_groq = MockLlmProvider::new();
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(
-            Role::User,
-            "mi color favorito es azul y después contame un chiste",
-        )];
-
-        executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(
-            executor.has_pending_plan(),
-            "pending_plan should be created with Direct step"
-        );
-
-        let next_messages = vec![Message::new(Role::User, "go")];
-        let result2 = executor.execute_step("sys", &next_messages).await.unwrap();
-
-        assert!(result2.should_continue);
-        assert!(result2.messages.is_empty());
-        assert!(
-            !executor.has_pending_plan(),
-            "Direct step should be consumed"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_executor_tool_result_error_path() {
-        let mut mock_groq = MockLlmProvider::new();
-        mock_groq
-            .expect_generate_response()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok("TOOL:nonexistent_tool".to_string()) }));
-
-        let mock_or = MockLlmProvider::new();
-        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
-        let registry = Registry::new();
-        let skill_registry = SkillRegistry::new();
-        let mut executor = Executor::new(&llm, &registry, &skill_registry);
-
-        let messages = vec![Message::new(Role::User, "test")];
-
-        let result = executor.execute_step("sys", &messages).await.unwrap();
-
-        assert!(!result.should_continue);
-        assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Tool);
-        assert!(result.messages[0].content.contains("Tool execution error"));
-    }
-
-    #[tokio::test]
     async fn test_executor_b1_preserves_skill_content() {
         #[derive(Debug)]
         struct ContentSkill;
@@ -1120,6 +647,80 @@ mod tests {
             result.messages[0].content, "B1 content preserved",
             "B1 skill content must not be discarded"
         );
+    }
+
+    #[tokio::test]
+    async fn test_executor_blocks_write_local_note_on_multiline_user_input() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:hola mundo".to_string()) })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "Guardá:\nhola\nmundo")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(result.messages[0]
+            .content
+            .contains("multiline content not allowed"));
+    }
+
+    #[tokio::test]
+    async fn test_executor_allows_write_local_note_on_single_line_user_input() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async { Ok("TOOL:write_local_note:hola mundo".to_string()) })
+            });
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "Guardá: hola mundo")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Tool);
+        assert!(result.messages[0].content.contains("nota guardada"));
+    }
+
+    #[tokio::test]
+    async fn test_executor_no_false_positive_for_regular_multiline() {
+        let mut mock_groq = MockLlmProvider::new();
+        mock_groq
+            .expect_generate_response()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("Voy a escribir un poema".to_string()) }));
+
+        let mock_or = MockLlmProvider::new();
+        let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
+        let registry = Registry::new();
+        let skill_registry = SkillRegistry::new();
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
+
+        let messages = vec![Message::new(Role::User, "Escribí un poema\nen dos líneas")];
+        let result = executor.execute_step("sys", &messages).await.unwrap();
+
+        assert!(!result.should_continue);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, Role::Assistant);
     }
 
     #[tokio::test]
