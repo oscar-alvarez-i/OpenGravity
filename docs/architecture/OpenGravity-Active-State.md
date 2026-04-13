@@ -25,189 +25,43 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 - Phase 2.1: CLOSED (write_local_note)
 - Phase 2.2: CLOSED (Tool Execution Layer)
+- Phase 2.3: CLOSED (Skill Execution Ordering)
 - Phase 2.4: CLOSED (observability)
 - Phase 2.5: CLOSED (read_local_notes)
 - Phase 2.6: CLOSED (Filesystem IO Contract Closure)
 - Phase 2.7: CLOSED (Tool Execution Path Cleanup)
 - Phase 2.8: CLOSED (Local Tool Error Contract)
-- Phase 2.9: PENDING (HITO Certification)
+- Phase 2.9: CLOSED (Certification)
+- Phase 2.10: ACTIVE (E2E Validation & Hardening)
 
-Tools disponibles:
-  - write_local_note
-  - read_local_notes
-- Acceso local completo: write + read sobre archivo sandboxed
-- Branch actual: main (workflow mergeado)
-- Next: Phase 2.9
+### Tooling Layer
 
----
+Tools registradas:
+- write_local_note (write)
+- read_local_notes (read)
 
-## Phase 2.6 — Filesystem IO Contract Closure (CLOSED)
+Capabilities:
+- Persistencia local (filesystem sandbox)
+- Lectura completa del histórico de notas
+- Enforcement de invariantes de tool execution (executor-level)
 
-## Objetivo
+### write_local_note
 
-Unificar acceso IO a filesystem en único punto interno.
+- Persistencia: filesystem (`local_notes.txt`)
+- Input constraint: single-line only (enforced at executor level)
+- Idempotencia: in-memory (executor `last_tool_input`)
+- Input validation: enforced against original user message (pre-LLM normalization)
 
-## Scope
+#### Invariants
+- Multiline user input → tool MUST NOT execute
+- Same tool + same input (same runtime instance) → MUST NOT execute twice
 
-- Factorización de helpers internos
-- Reutilizar resolve_note_path() y validate_note_path()
+#### Limitations
+- Idempotencia NO es persistente (se pierde entre reinicios)
+- Duplicados posibles a nivel storage
 
-## Acceptance
-
-- Sin duplicación
-- tests green
-- validación mínima pasa
-
----
-
-## Phase 2.7 — Tool Execution Path Cleanup (CLOSED)
-
-## Objetivo
-
-Eliminar execute_tool() legacy, usar solo ToolRegistry::execute()
-
-## Acceptance
-
-- Single execution path
-- sin regresión
-
----
-- Verified: no legacy execute_tool() present in codebase
-- Tool execution path is fully unified via ToolRegistry::execute()
-- No code changes were required for this phase
-
----
-
-## Phase 2.8 — Local Tool Error Contract (CLOSED)
-
-## Objetivo
-
-Formalizar contrato de errores de tools locales.
-
-## Scope
-
-- archivo inexistente
-- input inválido
-- error de IO
-
-## Acceptance
-
-- errores documentados ✓
-- tests de error coverage ✓
-
-## Implementation
-
-- Full error surface mapped for write_local_note and read_local_notes
-- Tests added:
-  - test_read_invalid_path_outside_cwd: path outside cwd validation
-  - test_read_invalid_path_is_directory: directory at file path validation
-- IO errors documented as non-deterministically testable
-- All 246 tests pass
-
----
-
-## Phase 2.9 — HITO 2 Certification (PENDING)
-
-## Objetivo
-
-Cierre formal del HITO 2.
-
-## Scope
-
-- documentación de contratos finales
-- explicitación de limitaciones
-- tests faltantes
-
-## Acceptance
-
-- sin deuda implícita
-- sistema auditado
-- listo para cierre
-
----
-
-## Phase 2.2 — Tool Execution Layer (CLOSED)
-
----
-
-# Runtime invariants
-
-## Branch execution order
-
-1. pending_plan → 2. skill (factual) → 3. skill (full) → 4. planner → 5. LLM → 6. tool
-
-## MAX_LOOP_ITERATIONS = 4
-
-## Freshness semantics
-
-- AlwaysFresh: get_current_time (ignora duplicate prevention)
-- Cacheable (default): otras tools previenen duplicates
-
-## Tool protocol
-
-- TOOL:tool_name en última línea no-vacía
-- Contenido después de TOOL causa rechazo
-
-## Memory semantics
-
-- Last-write-wins por key
-- Duplicate suppression activo
-- Transient facts filtrados (hoy, ahora, etc.)
-
----
-
-# Confirmado estable
-
-- executor branch tracing activo
-- memory extraction + persistence activo
-- freshness decision tracing activo
-- semantic overwrite de facts funcionando
-- planner multi-step activo
-- SQLite persistencia estable
-- runtime context compression activo
-
----
-
-# Runtime validado esperado
-
-Input: "Mi color favorito es verde y después decime la hora"
-
-Output esperado:
-1. memory update
-2. pending_plan
-3. tool fresh execution
-4. respuesta final ≤3 iteraciones
-
----
-
-# Restricciones activas
-
-## get_current_time
-
-Siempre fresh, no reutilizar resultado stale.
-
-## write_local_note
-
-- Path fijo: ./local_notes.txt
-- Append-only, single-line input
-- Freshness: Cacheable
-
----
-
-# Objetivo inmediato de trabajo
-
-Phase 2.9 (próxima)
-
----
-
-# Scope prohibido
-
-- refactor estructural amplio
-- planner rewrite
-- provider redesign
-- autonomous operations
-
-sin gate documental previo.
+#### Planned
+- Migración a DB en fases futuras (ver Roadmap)
 
 ---
 
