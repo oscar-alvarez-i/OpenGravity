@@ -784,6 +784,8 @@ Formalizar contrato de errores de tools locales con definición explícita de ca
   - invalid path (outside cwd)
   - invalid path (directory)
 - IO errors documented as non-deterministically testable
+- No file locking: concurrent writes are not synchronized and may interleave
+- Write operations are not atomic: partial writes are possible in case of process interruption
 
 ---
 

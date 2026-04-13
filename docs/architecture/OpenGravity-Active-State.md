@@ -196,7 +196,7 @@ Siempre fresh, no reutilizar resultado stale.
 
 # Objetivo inmediato de trabajo
 
-Phase 2.2 (próxima)
+Phase 2.9 (próxima)
 
 ---
 
