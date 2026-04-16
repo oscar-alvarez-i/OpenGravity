@@ -96,6 +96,9 @@ impl<'a> AgentLoop<'a> {
         let mut active_messages = context;
         active_messages.push(incoming_msg.clone());
 
+        // Keep unfiltered history for idempotency checks (updated each iteration with results)
+        let mut unfiltered_history = active_messages.clone();
+
         let mut iterations = 0;
 
         while iterations < MAX_LOOP_ITERATIONS {
@@ -106,9 +109,10 @@ impl<'a> AgentLoop<'a> {
             active_messages = prepare_iteration_context(&self.planner, &active_messages);
 
             // 4-6. Query LLM, detect, execute
+            // Pass unfiltered history for idempotency; filtered for LLM context
             let step_result = self
                 .executor
-                .execute_step(&system_prompt, &active_messages)
+                .execute_step(&system_prompt, &active_messages, Some(&unfiltered_history))
                 .await?;
 
             let StepResult {
@@ -165,6 +169,11 @@ impl<'a> AgentLoop<'a> {
                 if let Err(e) = self.memory.save_memory_update(update) {
                     warn!("Failed to save memory update: {}", e);
                 }
+            }
+
+            // Update unfiltered history with step results for next iteration's idempotency check
+            for msg in &step_messages {
+                unfiltered_history.push(msg.clone());
             }
 
             if !should_continue {
@@ -314,7 +323,7 @@ mod tests {
 
         let mut groq = MockLlmProvider::new();
         groq.expect_generate_response()
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+            .returning(|_, _| Box::pin(async { Ok("TOOL:write_local_note:hola".to_string()) }));
 
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
@@ -324,12 +333,15 @@ mod tests {
         let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
-            .run(Message::new(crate::domain::message::Role::User, "time?"))
+            .run(Message::new(
+                crate::domain::message::Role::User,
+                "save note?",
+            ))
             .await;
 
         assert!(
             res.is_ok(),
-            "Should terminate after tool result blocks second call"
+            "Should terminate: idempotency blocks second tool call in same turn"
         );
     }
 

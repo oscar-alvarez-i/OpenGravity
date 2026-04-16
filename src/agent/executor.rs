@@ -106,53 +106,6 @@ impl<'a> Executor<'a> {
         Ok(Message::new(Role::Tool, tool_output_text))
     }
 
-    fn should_skip_duplicate(&self, tool_name: &str, last_msg: Option<&Message>) -> bool {
-        let freshness_policy = self.registry.freshness_policy(tool_name);
-        let is_fresh = freshness_policy.is_fresh();
-
-        debug!(
-            tool_name = %tool_name,
-            freshness_policy = ?freshness_policy,
-            "Checking freshness for duplicate detection"
-        );
-
-        if is_fresh {
-            debug!(
-                "Tool '{}' marked as AlwaysFresh, executing without duplicate check",
-                tool_name
-            );
-            return false;
-        }
-
-        if let Some(msg) = last_msg {
-            if msg.role == Role::Tool && msg.content.contains("Tool result available:") {
-                debug!(
-                    "Tool '{}' cacheable, duplicate detected, skipping execution",
-                    tool_name
-                );
-                return true;
-            }
-        }
-        debug!(
-            "Tool '{}' cacheable, no duplicate found, executing",
-            tool_name
-        );
-        false
-    }
-
-    fn should_block_identical_replay(&self, tool_name: &str) -> bool {
-        if let Some(ref last_tool) = self.last_tool_executed {
-            if last_tool == tool_name {
-                debug!(
-                    "Identical tool replay detected: '{}' - blocking to prevent infinite loop",
-                    tool_name
-                );
-                return true;
-            }
-        }
-        false
-    }
-
     fn extract_assistant_text(response: &str) -> String {
         response
             .lines()
@@ -251,10 +204,14 @@ impl<'a> Executor<'a> {
     /// D. Planner
     /// E. LLM
     /// F. Tool execution
+    ///
+    /// `history_for_idempotency` is the full unfiltered message history used for
+    /// idempotency checks. When `None`, falls back to `messages` (for tests / backward compat).
     pub async fn execute_step(
         &mut self,
         system_prompt: &str,
         messages: &[Message],
+        history_for_idempotency: Option<&[Message]>,
     ) -> Result<StepResult> {
         let _step_start = Instant::now();
         info!("Step execution started");
@@ -406,13 +363,7 @@ impl<'a> Executor<'a> {
 
                         match step {
                             PlanStep::Tool(tool_name) => {
-                                if self.should_block_identical_replay(tool_name) {
-                                    info!(
-                                        "Branch: planner blocked_identical_replay, elapsed={:?}",
-                                        branch_start.elapsed()
-                                    );
-                                    return Ok(StepResult::new(vec![], false));
-                                }
+                                // Previous idempotency-by-replay checks removed; proceed with execution
                                 let tool_msg = self.execute_tool_step(tool_name)?;
                                 self.set_pending_plan(plan);
                                 info!(
@@ -466,7 +417,19 @@ impl<'a> Executor<'a> {
 
         let tool_call = self.registry.parse_tool_call(&response_text);
 
-        if tool_blocked && tool_call.is_some() {
+        // Block tools only if: Tool result exists AND tool is NOT AlwaysFresh
+        // write_local_note has its own idempotency logic; get_current_time is AlwaysFresh
+        let should_block = tool_blocked
+            && tool_call.is_some()
+            && tool_call
+                .as_ref()
+                .map(|t| {
+                    let is_always_fresh = self.registry.freshness_policy(&t.name).is_fresh();
+                    t.name != "write_local_note" && !is_always_fresh
+                })
+                .unwrap_or(false);
+
+        if should_block {
             let text_without_tool = Self::extract_assistant_text(&response_text);
 
             return Ok(StepResult::new(
@@ -486,49 +449,9 @@ impl<'a> Executor<'a> {
                 tool_call.name, tool_call.input
             );
 
-            if self.should_skip_duplicate(&tool_call.name, messages.last()) {
-                debug!(
-                    "Tool '{}' already executed in previous turn - blocking duplicate",
-                    tool_call.name
-                );
-                let assistant_content = Self::extract_assistant_text(&response_text);
-                info!(
-                    "Branch: tool exit, tool=blocked, elapsed={:?}",
-                    tool_branch_start.elapsed()
-                );
+            // Duplicate checks are now handled via full-history idempotency logic
 
-                return Ok(StepResult::new(
-                    vec![Message::new(Role::Assistant, assistant_content)],
-                    false,
-                ));
-            }
-
-            // IDEMPOTENCY CHECK: block if same tool+input was already executed
-            // Check in message history (not internal state)
-            let tool_fingerprint = format!("{}:{}", tool_call.name, tool_call.input);
-            let was_executed = messages.iter().rev().any(|m| {
-                m.role == Role::Tool
-                    && m.content.contains("Tool result available:")
-                    && m.content.contains(&tool_fingerprint)
-            });
-
-            if was_executed {
-                let assistant_content = Self::extract_assistant_text(&response_text);
-                let idempotent_msg = if !assistant_content.is_empty() {
-                    assistant_content
-                } else {
-                    "La acción ya fue ejecutada anteriormente.".to_string()
-                };
-                info!(
-                    "Branch: tool exit, tool=idempotent_blocked, tool={}, input={}",
-                    tool_call.name, tool_call.input
-                );
-                return Ok(StepResult::new(
-                    vec![Message::new(Role::Assistant, idempotent_msg)],
-                    false,
-                ));
-            }
-
+            // Remove previous idempotency logic. We now rely on full-history Tool-message scanning elsewhere.
             // VALIDATE: reject write_local_note if user message was multiline
             if tool_call.name == "write_local_note" {
                 if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
@@ -546,14 +469,58 @@ impl<'a> Executor<'a> {
                 }
             }
 
+            // IDEMPOTENCY: scan full unfiltered history for matching Tool execution
+            // Skip for AlwaysFresh tools (they should always execute)
+            // Uses strict parsing: "Tool result available: <tool>:<input>; <output>"
+            let history = history_for_idempotency.unwrap_or(messages);
+            let is_always_fresh = self.registry.freshness_policy(&tool_call.name).is_fresh();
+            let expected = format!("{}:{}", tool_call.name, tool_call.input);
+            let was_executed = !is_always_fresh
+                && history.iter().any(|m| {
+                    m.role == Role::Tool
+                        && if let Some(rest) = m.content.strip_prefix("Tool result available: ") {
+                            if let Some((tool_and_input, _)) = rest.split_once(';') {
+                                tool_and_input == expected
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                });
+            if was_executed {
+                info!(
+                    "IDEMPOTENCY_CHECK: matched previous execution in history, tool={}, input={}",
+                    tool_call.name, tool_call.input
+                );
+                return Ok(StepResult::new(
+                    vec![Message::new(
+                        Role::Assistant,
+                        format!(
+                            "IDEMPOTENCY: previous execution detected for {} with input {}",
+                            tool_call.name, tool_call.input
+                        ),
+                    )],
+                    false,
+                ));
+            }
+
             let request = ToolExecutionRequest {
                 tool_name: tool_call.name.clone(),
                 input: tool_call.input.clone(),
             };
             let tool_res = self.registry.execute(request);
-            let tool_output_text = match tool_res.success {
-                true => format!("Tool result available: {}. Use this result to answer the user directly without calling the tool again.", tool_res.output),
-                false => format!("Tool execution error: {}", tool_res.error.unwrap_or_default()),
+            // Include tool name and input in the output to support idempotency across turns
+            let tool_output_text = if tool_res.success {
+                format!(
+                    "Tool result available: {}:{}; {}",
+                    tool_call.name, tool_call.input, tool_res.output
+                )
+            } else {
+                format!(
+                    "Tool execution error: {}",
+                    tool_res.error.unwrap_or_default()
+                )
             };
 
             self.last_tool_executed = Some(tool_call.name.clone());
@@ -624,7 +591,7 @@ mod tests {
 
         let messages = vec![Message::new(Role::User, "B1TEST: algo y después algo más")];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(
             result.should_continue,
@@ -659,7 +626,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "Guardá:\nhola\nmundo")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -686,7 +653,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "Guardá: hola mundo")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -709,7 +676,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "Escribí un poema\nen dos líneas")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -739,7 +706,10 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages1 = vec![Message::new(Role::User, "Guardá: hola mundo")];
-        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+        let result1 = executor
+            .execute_step("sys", &messages1, None)
+            .await
+            .unwrap();
 
         assert!(result1.should_continue);
         assert_eq!(result1.messages[0].role, Role::Tool);
@@ -747,9 +717,13 @@ mod tests {
 
         let messages2 = vec![
             Message::new(Role::User, "Guardá: hola mundo"),
+            Message::new(Role::Assistant, "TOOL:write_local_note:hola mundo"),
             result1.messages[0].clone(),
         ];
-        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+        let result2 = executor
+            .execute_step("sys", &messages2, None)
+            .await
+            .unwrap();
 
         assert!(!result2.should_continue);
         assert_eq!(result2.messages[0].role, Role::Assistant);
@@ -779,17 +753,24 @@ mod tests {
 
         // First turn
         let messages1 = vec![Message::new(Role::User, "Guardá: primer mensaje")];
-        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+        let result1 = executor
+            .execute_step("sys", &messages1, None)
+            .await
+            .unwrap();
 
         assert!(result1.should_continue, "First execution should continue");
         assert_eq!(result1.messages[0].role, Role::Tool);
 
-        // Second turn - include previous messages
+        // Second turn - include previous messages (User -> Assistant -> Tool pattern)
         let messages2 = vec![
             Message::new(Role::User, "Guardá: segundo mensaje"),
+            Message::new(Role::Assistant, "TOOL:write_local_note:segundo mensaje"),
             result1.messages[0].clone(),
         ];
-        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+        let result2 = executor
+            .execute_step("sys", &messages2, None)
+            .await
+            .unwrap();
 
         // Should execute because input is different
         assert!(
@@ -823,7 +804,10 @@ mod tests {
 
         // First turn - get_current_time
         let messages1 = vec![Message::new(Role::User, "qué hora es")];
-        let result1 = executor.execute_step("sys", &messages1).await.unwrap();
+        let result1 = executor
+            .execute_step("sys", &messages1, None)
+            .await
+            .unwrap();
 
         assert!(result1.should_continue, "First execution should continue");
         assert_eq!(result1.messages[0].role, Role::Tool);
@@ -831,9 +815,13 @@ mod tests {
         // Second turn - write_local_note (different tool)
         let messages2 = vec![
             Message::new(Role::User, "Guardá: hola"),
+            Message::new(Role::Assistant, "TOOL:write_local_note:hola"),
             result1.messages[0].clone(),
         ];
-        let result2 = executor.execute_step("sys", &messages2).await.unwrap();
+        let result2 = executor
+            .execute_step("sys", &messages2, None)
+            .await
+            .unwrap();
 
         // Should execute because different tool
         assert!(
@@ -896,7 +884,7 @@ mod tests {
             "Mi color favorito es azul y después dime la hora",
         )];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(
             executor.has_pending_plan(),
@@ -931,7 +919,7 @@ mod tests {
             "Mi color favorito es azul y después dime la hora",
         )];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         // B1 should trigger, create_plan creates pending plan
         assert!(executor.has_pending_plan());
@@ -958,11 +946,11 @@ mod tests {
             Message::new(Role::Tool, "Tool result available: previous result"),
         ];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
-        assert!(!result.should_continue);
+        assert!(result.should_continue);
         assert_eq!(result.messages.len(), 1);
-        assert_eq!(result.messages[0].role, Role::Assistant);
+        assert_eq!(result.messages[0].role, Role::Tool);
     }
 
     #[test]
@@ -1084,7 +1072,7 @@ mod tests {
             .times(1)
             .returning(|_, _| {
                 Box::pin(async {
-                    Ok("I will call get_current_time\nTOOL:get_current_time".to_string())
+                    Ok("I will call write_local_note\nTOOL:write_local_note:test".to_string())
                 })
             });
 
@@ -1095,13 +1083,19 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![
-            Message::new(Role::User, "what time is it"),
-            Message::new(Role::Tool, "Tool result available: UTC 10:00".to_string()),
+            Message::new(Role::User, "save a note"),
+            Message::new(
+                Role::Tool,
+                "Tool result available: write_local_note:test; previous note saved".to_string(),
+            ),
         ];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
-        assert!(!result.should_continue, "Tool blocked should not continue");
+        assert!(
+            !result.should_continue,
+            "Cacheable tool with same name+input should be blocked"
+        );
         assert_eq!(result.messages.len(), 1, "Should return assistant message");
         assert_eq!(
             result.messages[0].role,
@@ -1133,7 +1127,7 @@ mod tests {
             Message::new(Role::Tool, "Tool result available: sunny".to_string()),
         ];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(
             !result.should_continue,
@@ -1163,7 +1157,7 @@ mod tests {
 
         let messages = vec![Message::new(Role::User, "hello")];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(!result.should_continue, "Fallback should not continue");
         assert_eq!(result.messages.len(), 1, "Should return assistant message");
@@ -1187,7 +1181,7 @@ mod tests {
 
         let messages = vec![Message::new(Role::User, "what time")];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue, "Tool execution should continue");
         assert_eq!(result.messages.len(), 1, "Should return tool message");
@@ -1218,7 +1212,7 @@ mod tests {
 
         let messages = vec![Message::new(Role::User, "go")];
 
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue);
         assert!(
@@ -1275,7 +1269,7 @@ mod tests {
         });
 
         let messages = vec![Message::new(Role::User, "go")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -1315,7 +1309,7 @@ mod tests {
         });
 
         let messages = vec![Message::new(Role::User, "test")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -1327,25 +1321,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_executor_should_skip_duplicate_when_fresh() {
-        let mock_groq = MockLlmProvider::new();
+    async fn test_executor_idempotent_across_turns_real_history() {
+        // This test validates that duplicate execution is blocked when a prior Tool
+        // message with the same tool name and input exists in the history.
+        // The exact content of messages is aligned with the new idempotency strategy.
+        let mut mock_groq = MockLlmProvider::new();
+        // First turn: tool execution request
+        mock_groq
+            .expect_generate_response()
+            .times(2)
+            .returning(|_, _| Box::pin(async { Ok("TOOL:write_local_note:hola".to_string()) }));
+
         let mock_or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(vec![Box::new(mock_groq), Box::new(mock_or)]);
         let registry = Registry::new();
         let skill_registry = SkillRegistry::new();
-        let executor = Executor::new(&llm, &registry, &skill_registry);
+        let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
-        let should_skip = executor.should_skip_duplicate(
-            "get_current_time",
-            Some(&Message::new(
-                Role::Tool,
-                "Tool result available: UTC 10:00".to_string(),
-            )),
+        // Turn 1
+        let messages1 = vec![Message::new(Role::User, "Guardá: hola")];
+        let result1 = executor
+            .execute_step("sys", &messages1, None)
+            .await
+            .unwrap();
+        assert!(result1.should_continue);
+
+        // Prepare history for Turn 2 to simulate a previous Tool result
+        // Format must match: "Tool result available: <tool>:<input>; <output>"
+        let history_tool = Message::new(
+            Role::Tool,
+            "Tool result available: write_local_note:hola; nota guardada",
         );
 
+        // Turn 2: same input should be detected as idempotent and blocked
+        let messages2 = vec![
+            Message::new(Role::User, "Guardá: hola"),
+            history_tool.clone(),
+            result1.messages[0].clone(),
+        ];
+        // LLM should respond with a tool call again, but idempotency should block execution
+        // We simulate by returning a tool call for the same input
+        // The exact response content is not asserted; we just ensure we get a blocking outcome
+        let result2 = executor
+            .execute_step("sys", &messages2, None)
+            .await
+            .unwrap();
+
         assert!(
-            !should_skip,
-            "Non-cacheable tool should not be skipped even if result exists"
+            !result2.should_continue,
+            "Duplicate execution should be blocked"
         );
     }
 
@@ -1368,7 +1392,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "what time")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -1411,7 +1435,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "hello world")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);
@@ -1447,12 +1471,12 @@ mod tests {
         let skill_registry = SkillRegistry::new();
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
-        let result1 = executor.execute_step("sys", &[]).await.unwrap();
+        let result1 = executor.execute_step("sys", &[], None).await.unwrap();
         assert!(!result1.should_continue, "Tool failure should not continue");
         assert_eq!(result1.messages[0].role, Role::Tool);
 
         let result2 = executor
-            .execute_step("sys", &[Message::new(Role::User, "weather again")])
+            .execute_step("sys", &[Message::new(Role::User, "weather again")], None)
             .await
             .unwrap();
         assert!(
@@ -1478,7 +1502,7 @@ mod tests {
         });
 
         let messages = vec![Message::new(Role::User, "go")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(
             result.should_continue,
@@ -1525,7 +1549,7 @@ mod tests {
         let mut executor = Executor::new(&llm, &registry, &skill_registry);
 
         let messages = vec![Message::new(Role::User, "test input")];
-        let result = executor.execute_step("sys", &messages).await.unwrap();
+        let result = executor.execute_step("sys", &messages, None).await.unwrap();
 
         assert!(!result.should_continue);
         assert_eq!(result.messages.len(), 1);

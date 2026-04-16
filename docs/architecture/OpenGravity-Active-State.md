@@ -21,7 +21,7 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 ---
 
-## HITO 2 — Personal Execution Layer (ACTIVE)
+## HITO 2 — Personal Execution Layer (CLOSED)
 
 - Phase 2.1: CLOSED (write_local_note)
 - Phase 2.2: CLOSED (Tool Execution Layer)
@@ -32,7 +32,7 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 - Phase 2.7: CLOSED (Tool Execution Path Cleanup)
 - Phase 2.8: CLOSED (Local Tool Error Contract)
 - Phase 2.9: CLOSED (Certification)
-- Phase 2.10: ACTIVE (E2E Validation & Hardening)
+- Phase 2.10: CLOSED (Idempotency Enforcement)
 
 ### Tooling Layer
 
@@ -49,19 +49,72 @@ Capabilities:
 
 - Persistencia: filesystem (`local_notes.txt`)
 - Input constraint: single-line only (enforced at executor level)
-- Idempotencia: in-memory (executor `last_tool_input`)
+- Idempotencia: in-memory via full message history
 - Input validation: enforced against original user message (pre-LLM normalization)
+
+#### Idempotency Scope (Phase 2.10)
+
+- **Implementation**: Full unfiltered message history scanning
+- **Source of truth**: Tool messages with format `"Tool result available: <tool>:<input>; <output>"`
+- **Matching**: Strict parsing (exact match on `<tool>:<input>`)
+- **Exemption**: AlwaysFresh tools (`get_current_time`) bypass idempotency
+
+#### Guarantees
+
+- No duplicate execution for same tool + input within a runtime session
+- Cross-turn protection inside agent loop
+- Deterministic behavior (no fuzzy matching)
+
+#### Limitations
+
+- NOT persisted across process restarts
+- NOT shared across distributed instances
+- Depends on in-memory history (AgentLoop)
 
 #### Invariants
 - Multiline user input → tool MUST NOT execute
 - Same tool + same input (same runtime instance) → MUST NOT execute twice
+- AlwaysFresh tool → always executes (no idempotency check)
 
-#### Limitations
-- Idempotencia NO es persistente (se pierde entre reinicios)
-- Duplicados posibles a nivel storage
+#### E2E Validation Scenarios
+
+**Scenario 1 — First execution**
+```
+User: "Guardá hola"
+→ Tool executes
+→ Tool message stored: "Tool result available: write_local_note:hola; nota guardada"
+```
+
+**Scenario 2 — Different input**
+```
+User: "Guardá chau"
+→ Tool executes (input differs)
+→ Tool message stored: "Tool result available: write_local_note:chau; nota guardada"
+```
+
+**Scenario 3 — Same input (IDEMPOTENCY)**
+```
+User: "Guardá hola"
+→ Tool executes
+→ Tool message stored
+
+User: "Guardá hola"
+→ Idempotency detected (name + input match)
+→ Tool MUST NOT execute
+→ Assistant returns idempotency message
+→ local_notes.txt has ONE entry for "hola"
+```
+
+**Scenario 4 — AlwaysFresh tool**
+```
+User: "¿Qué hora es?"
+→ Tool executes every time
+→ No idempotency check applied
+→ get_current_time alwaysFresh
+```
 
 #### Planned
-- Migración a DB en fases futuras (ver Roadmap)
+- Persistence to DB in future phases (see Roadmap)
 
 ---
 
