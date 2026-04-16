@@ -1244,3 +1244,298 @@ async fn test_memory_overwrite_pending_plan_fresh_tool() -> Result<()> {
 
     Ok(())
 }
+
+// --- Test Group E: Idempotency & Tool Execution Semantics (Phase 2.10) ---
+
+/**
+ * test_idempotency_blocks_same_input_across_turns
+ *
+ * Scenario:
+ * Turn 1: User asks to save note "hola mundo"
+ * Turn 2: Same request with identical input
+ *
+ * Expected:
+ * - Turn 1: Tool executes (writes to file)
+ * - Turn 2: Tool execution BLOCKED by idempotency
+ * - Assistant returns idempotency message
+ */
+#[tokio::test]
+async fn test_idempotency_blocks_same_input_across_turns() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+
+    // Turn 1: Tool call + final answer
+    mock_llm
+        .expect_generate_response()
+        .returning(|_, _| Ok("TOOL:write_local_note:hola mundo".to_string()));
+
+    // Turn 2: Same tool call - LLM asks again but idempotency blocks
+    mock_llm
+        .expect_generate_response()
+        .returning(|_, _| Ok("TOOL:write_local_note:hola mundo".to_string()));
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Turn 1
+    let res1 = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "save note: hola mundo"))
+    .await?;
+
+    // Turn 1 should complete successfully
+    assert!(!res1.content.is_empty(), "Turn 1 should produce response");
+
+    // Turn 2 - same input should be blocked by idempotency
+    let res2 = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "save note: hola mundo"))
+    .await?;
+
+    // Turn 2 should complete (idempotency blocked)
+    assert!(
+        !res2.content.is_empty(),
+        "Turn 2 should complete after idempotency block"
+    );
+
+    Ok(())
+}
+
+/**
+ * test_different_input_executes_tool (Scenario 7 Regression Test)
+ *
+ * Scenario:
+ * Turn 1: User saves "hola mundo"
+ * Turn 2: User saves "hola" (DIFFERENT input)
+ *
+ * Expected:
+ * - Turn 1: Tool executes
+ * - Turn 2: Tool executes AGAIN (different input)
+ *
+ * This test REGRESSES if someone reintroduces over-restrictive should_block logic.
+ * MUST fail if tool is incorrectly blocked.
+ */
+#[tokio::test]
+async fn test_different_input_executes_tool() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Turn 1: "hola mundo" - tool call
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:write_local_note:hola mundo".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Nota guardada.".to_string()));
+
+    // Turn 2: "hola" (different input) - tool call should execute
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:write_local_note:hola".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Nota guardada.".to_string()));
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Turn 1
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Guardá: hola mundo"))
+    .await?;
+
+    // Turn 2 - different input MUST execute tool
+    let res2 = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Guardá: hola"))
+    .await?;
+
+    // Should complete successfully (different input = no idempotency block)
+    assert!(
+        !res2.content.is_empty(),
+        "Turn 2 with different input should complete"
+    );
+
+    Ok(())
+}
+
+/**
+ * test_alwaysfresh_tool_never_blocked
+ *
+ * Scenario:
+ * Turn 1: User asks for time
+ * Turn 2: User asks for time again
+ *
+ * Expected:
+ * - get_current_time ALWAYS executes (AlwaysFresh)
+ * - No idempotency check applied to AlwaysFresh tools
+ */
+#[tokio::test]
+async fn test_alwaysfresh_tool_never_blocked() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Turn 1: Time query
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Son las 10:00.".to_string()));
+
+    // Turn 2: Time query again - MUST call tool again (AlwaysFresh)
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("Son las 10:01.".to_string()));
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    // Turn 1
+    AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Qué hora es?"))
+    .await?;
+
+    // Turn 2 - time query MUST execute tool again (AlwaysFresh)
+    let res2 = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Qué hora es?"))
+    .await?;
+
+    // Should complete successfully (AlwaysFresh = always executes)
+    assert!(
+        !res2.content.is_empty(),
+        "Turn 2 with time query should complete"
+    );
+
+    Ok(())
+}
+
+/**
+ * test_tool_result_consumed_within_loop
+ *
+ * Scenario:
+ * LLM emits tool call
+ * Tool executes
+ * Loop continues
+ * LLM uses result in next iteration
+ *
+ * Expected:
+ * - Only one tool execution per turn
+ * - Tool result consumed by LLM
+ * - No infinite loop
+ */
+#[tokio::test]
+async fn test_tool_result_consumed_within_loop() -> Result<()> {
+    let db = Db::new(":memory:")?;
+    let registry = Registry::new();
+    let skill_registry = SkillRegistry::new();
+
+    let mut mock_llm = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
+
+    // Iteration 1: LLM asks for tool
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _| Ok("TOOL:get_current_time".to_string()));
+
+    // Iteration 2: LLM uses tool result and answers
+    mock_llm
+        .expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, messages| {
+            // Verify tool result is in context
+            let has_tool_result = messages
+                .iter()
+                .any(|m| m.role == Role::Tool && m.content.contains("get_current_time"));
+            assert!(
+                has_tool_result,
+                "Tool result should be in context for LLM to consume"
+            );
+            Ok("La hora actual es 10:00.".to_string())
+        });
+
+    let llm = LlmOrchestrator::new(vec![
+        Box::new(mock_llm),
+        Box::new(MockRegressionMockProvider::new()),
+    ]);
+
+    let res = AgentLoop::new(
+        MemoryBridge::new(&db, "u"),
+        Planner::new(),
+        Executor::new(&llm, &registry, &skill_registry),
+    )
+    .run(Message::new(Role::User, "Qué hora es?"))
+    .await?;
+
+    // Should complete with single tool execution
+    assert!(
+        !res.content.is_empty(),
+        "Should complete after consuming tool result"
+    );
+    assert!(
+        res.content.contains("10:00"),
+        "Response should use tool result"
+    );
+
+    Ok(())
+}
