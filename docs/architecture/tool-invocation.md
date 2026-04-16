@@ -66,6 +66,25 @@ Tool result available: <tool_name>:<input>; <result>
 - NOT persisted across process restarts
 - NOT shared across distributed instances
 
+### Idempotency Response Visibility
+
+When idempotency is triggered, the system returns an Assistant message:
+```
+IDEMPOTENCY: previous execution detected for <tool> with input <input>
+```
+
+**This message is visible to the LLM.**
+
+- Currently used for transparency and debugging
+- Exposes internal control flow decisions to the LLM
+- LLM may incorporate this into its reasoning for subsequent steps
+
+**This is a temporary implementation detail, not a long-term contract.**
+
+Future versions may replace this with:
+- Internal signals (not visible to LLM)
+- Non-visible control flow mechanisms
+
 ## AlwaysFresh Guarantee
 
 > **Rule**: If the user requests time-related information, the system MUST execute `get_current_time`.

@@ -116,6 +116,9 @@ User: "¿Qué hora es?"
 #### Planned
 - Persistence to DB in future phases (see Roadmap)
 
+### References
+- Tool execution semantics: `docs/architecture/tool-invocation.md`
+
 ---
 
 # Repository Governance
