@@ -536,6 +536,50 @@ impl<'a> Executor<'a> {
             ));
         }
 
+        // ALWAYSFRESH GUARDRAIL: enforce execution for time queries
+        // Only trigger if no Tool result exists in context (LLM should have called tool)
+        let has_tool_result = messages
+            .iter()
+            .any(|m| m.role == Role::Tool && m.content.contains("Tool result available:"));
+
+        if !has_tool_result {
+            if let Some(user_msg) = messages.iter().rev().find(|m| m.role == Role::User) {
+                let content = user_msg.content.to_lowercase();
+                let is_time_query = content.contains("hora")
+                    || content.contains("time")
+                    || content.contains("qué hora")
+                    || content.contains("what time");
+
+                if is_time_query {
+                    info!("ALWAYSFRESH_GUARDRAIL: forcing get_current_time execution");
+
+                    let request = ToolExecutionRequest {
+                        tool_name: "get_current_time".to_string(),
+                        input: String::new(),
+                    };
+
+                    let tool_res = self.registry.execute(request);
+
+                    let tool_output_text = if tool_res.success {
+                        format!(
+                            "Tool result available: get_current_time:; {}",
+                            tool_res.output
+                        )
+                    } else {
+                        format!(
+                            "Tool execution error: {}",
+                            tool_res.error.unwrap_or_default()
+                        )
+                    };
+
+                    return Ok(StepResult::new(
+                        vec![Message::new(Role::Tool, tool_output_text)],
+                        true,
+                    ));
+                }
+            }
+        }
+
         info!("Branch: fallback (assistant response)");
         self.last_tool_executed = None;
         Ok(StepResult::new(

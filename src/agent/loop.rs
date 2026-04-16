@@ -59,6 +59,10 @@ fn prepare_iteration_context(planner: &Planner, messages: &[Message]) -> Vec<Mes
     planner.compact_context(&filtered)
 }
 
+fn build_llm_context(active: &[Message]) -> Vec<Message> {
+    active.to_vec()
+}
+
 pub struct AgentLoop<'a> {
     memory: MemoryBridge<'a>,
     planner: Planner,
@@ -109,10 +113,13 @@ impl<'a> AgentLoop<'a> {
             active_messages = prepare_iteration_context(&self.planner, &active_messages);
 
             // 4-6. Query LLM, detect, execute
-            // Pass unfiltered history for idempotency; filtered for LLM context
+            // Build context for LLM from filtered messages
+            let llm_context = build_llm_context(&active_messages);
+
+            // Pass unfiltered history for idempotency; filtered context for LLM
             let step_result = self
                 .executor
-                .execute_step(&system_prompt, &active_messages, Some(&unfiltered_history))
+                .execute_step(&system_prompt, &llm_context, Some(&unfiltered_history))
                 .await?;
 
             let StepResult {
