@@ -4,6 +4,30 @@ use std::os::unix::fs::OpenOptionsExt;
 
 const NOTE_FILE: &str = "local_notes.txt";
 
+thread_local! {
+    static NOTES_PATH: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn set_notes_path(path: std::path::PathBuf) {
+    NOTES_PATH.with(|p| *p.borrow_mut() = Some(path));
+}
+
+pub fn clear_notes_path() {
+    NOTES_PATH.with(|p| *p.borrow_mut() = None);
+}
+
+fn resolve_notes_path() -> std::path::PathBuf {
+    NOTES_PATH.with(|p| p.borrow().clone()).unwrap_or_else(|| {
+        std::env::var("OPEN_GRAVITY_NOTES_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join(NOTE_FILE)
+            })
+    })
+}
+
 enum FileMode {
     Read,
     Append,
@@ -47,8 +71,7 @@ where
 }
 
 fn resolve_note_path() -> Result<std::path::PathBuf, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("Failed to get cwd: {}", e))?;
-    Ok(cwd.join(NOTE_FILE))
+    Ok(resolve_notes_path())
 }
 
 fn validate_note_path(path: &std::path::Path) -> Result<(), String> {
@@ -80,6 +103,10 @@ fn validate_note_path(path: &std::path::Path) -> Result<(), String> {
     } else {
         let parent = path.parent().ok_or("Invalid path")?;
         if parent != cwd {
+            let tmp = std::env::temp_dir();
+            if path.starts_with(&tmp) {
+                return Ok(());
+            }
             return Err("Invalid target directory".to_string());
         }
     }

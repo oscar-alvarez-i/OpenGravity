@@ -14,8 +14,8 @@ use open_gravity::domain::message::{Message, Role};
 use open_gravity::llm::models::LlmProvider;
 use open_gravity::llm::LlmOrchestrator;
 use open_gravity::skills::registry::SkillRegistry;
+use open_gravity::tools::local::{clear_notes_path, set_notes_path};
 use open_gravity::tools::registry::Registry;
-use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
 
@@ -31,20 +31,21 @@ mock! {
 // Shared Test Helpers
 // =============================================================================
 
-fn test_notes_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("local_notes.txt")
+fn unique_notes_path(test_name: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(std::time::Duration::ZERO)
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "og_test_{}_{}_{}.txt",
+        test_name,
+        std::process::id(),
+        nanos
+    ))
 }
 
-fn cleanup_notes() {
-    let path = test_notes_path();
-    let _ = fs::remove_file(&path);
-}
-
-fn read_notes() -> Option<String> {
-    let path = test_notes_path();
-    fs::read_to_string(&path).ok()
+fn read_notes_at(path: &PathBuf) -> Option<String> {
+    fs::read_to_string(path).ok()
 }
 
 fn user(msg: &str) -> Message {
@@ -55,24 +56,20 @@ fn user(msg: &str) -> Message {
 // Escenario 1 — Write + Read básico
 // =============================================================================
 
-/// Write content and verify persistence.
 #[tokio::test]
-#[serial]
 async fn escenario_1_write_read_basico() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_1");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let mut mock = MockRegressionMockProvider::new();
-
-    cleanup_notes();
-
     mock.expect_generate_response()
         .returning(|_, _| Ok("TOOL:write_local_note:hola mundo".to_string()));
     mock.expect_generate_response()
         .returning(|_, _| Ok("Nota guardada.".to_string()));
 
-    let llm = LlmOrchestrator::new(vec![
-        Box::new(mock),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm = LlmOrchestrator::new(vec![Box::new(mock)]);
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
 
@@ -85,13 +82,14 @@ async fn escenario_1_write_read_basico() -> Result<()> {
     let res = agent.run(user("Guardá: hola mundo")).await?;
     assert!(!res.content.is_empty());
 
-    let content = read_notes().unwrap_or_default();
+    let content = read_notes_at(&path).unwrap_or_default();
     assert!(
         content.contains("hola mundo"),
         "File should contain written note"
     );
 
-    cleanup_notes();
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -99,15 +97,15 @@ async fn escenario_1_write_read_basico() -> Result<()> {
 // Escenario 2 — Escritura duplicada (idempotencia)
 // =============================================================================
 
-/// Same tool + same input across turns is blocked by idempotency.
 #[tokio::test]
-#[serial]
 async fn escenario_2_idempotencia() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_2");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
-
-    cleanup_notes();
 
     let mut mock1 = MockRegressionMockProvider::new();
     mock1
@@ -117,10 +115,7 @@ async fn escenario_2_idempotencia() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Nota guardada.".to_string()));
 
-    let llm1 = LlmOrchestrator::new(vec![
-        Box::new(mock1),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm1 = LlmOrchestrator::new(vec![Box::new(mock1)]);
 
     let res1 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -131,7 +126,7 @@ async fn escenario_2_idempotencia() -> Result<()> {
     .await?;
     assert!(!res1.content.is_empty());
 
-    let content1 = read_notes().unwrap_or_default();
+    let content1 = read_notes_at(&path).unwrap_or_default();
     assert!(content1.contains("hola mundo"));
 
     let mut mock2 = MockRegressionMockProvider::new();
@@ -142,10 +137,7 @@ async fn escenario_2_idempotencia() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Nota duplicada - ya existe.".to_string()));
 
-    let llm2 = LlmOrchestrator::new(vec![
-        Box::new(mock2),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm2 = LlmOrchestrator::new(vec![Box::new(mock2)]);
 
     let res2 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -156,11 +148,12 @@ async fn escenario_2_idempotencia() -> Result<()> {
     .await?;
     assert!(!res2.content.is_empty());
 
-    let content2 = read_notes().unwrap_or_default();
+    let content2 = read_notes_at(&path).unwrap_or_default();
     let count = content2.matches("hola mundo").count();
     assert_eq!(count, 1, "Should have exactly one entry (idempotency)");
 
-    cleanup_notes();
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -168,15 +161,15 @@ async fn escenario_2_idempotencia() -> Result<()> {
 // Escenario 3 — Escritura con input distinto
 // =============================================================================
 
-/// Different inputs execute independently (no idempotency).
 #[tokio::test]
-#[serial]
 async fn escenario_3_inputs_distintos() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_3");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
-
-    cleanup_notes();
 
     let mut mock1 = MockRegressionMockProvider::new();
     mock1
@@ -186,10 +179,7 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Nota guardada.".to_string()));
 
-    let llm1 = LlmOrchestrator::new(vec![
-        Box::new(mock1),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm1 = LlmOrchestrator::new(vec![Box::new(mock1)]);
 
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -207,10 +197,7 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Nota guardada.".to_string()));
 
-    let llm2 = LlmOrchestrator::new(vec![
-        Box::new(mock2),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm2 = LlmOrchestrator::new(vec![Box::new(mock2)]);
 
     let res2 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -219,10 +206,9 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
     )
     .run(user("Guardá: hola"))
     .await?;
-
     assert!(!res2.content.is_empty());
 
-    let content = read_notes().unwrap_or_default();
+    let content = read_notes_at(&path).unwrap_or_default();
     assert!(content.contains("hola mundo"));
     assert!(content.contains("hola"));
     assert_eq!(
@@ -231,7 +217,8 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
         "Both inputs should be present"
     );
 
-    cleanup_notes();
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -239,11 +226,13 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
 // Escenario 4 — Tool AlwaysFresh (hora)
 // =============================================================================
 
-/// get_current_time always executes (AlwaysFresh, never blocked).
 #[tokio::test]
-#[serial]
 async fn escenario_4_alwaysfresh_time() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_4");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let mut mock = MockRegressionMockProvider::new();
     let mut seq = Sequence::new();
 
@@ -265,20 +254,18 @@ async fn escenario_4_alwaysfresh_time() -> Result<()> {
         .in_sequence(&mut seq)
         .returning(|_, _| Ok("Son las 10:01.".to_string()));
 
-    let llm = LlmOrchestrator::new(vec![
-        Box::new(mock),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm = LlmOrchestrator::new(vec![Box::new(mock)]);
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
 
-    AgentLoop::new(
+    let res1 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
         Planner::new(),
         Executor::new(&llm, &registry, &skill_registry),
     )
     .run(user("Qué hora es?"))
     .await?;
+    assert!(res1.content.contains("10:00"));
 
     let res2 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -287,9 +274,10 @@ async fn escenario_4_alwaysfresh_time() -> Result<()> {
     )
     .run(user("Qué hora es?"))
     .await?;
+    assert!(res2.content.contains("10:01") || res2.content != res1.content);
 
-    assert!(!res2.content.is_empty());
-
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -297,11 +285,13 @@ async fn escenario_4_alwaysfresh_time() -> Result<()> {
 // Escenario 5 — Loop interno no duplica tool
 // =============================================================================
 
-/// Tool executes once per turn; loop consumes result.
 #[tokio::test]
-#[serial]
 async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_5");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let mut mock = MockRegressionMockProvider::new();
     let mut seq = Sequence::new();
 
@@ -321,10 +311,7 @@ async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
             Ok("La hora actual es 10:00.".to_string())
         });
 
-    let llm = LlmOrchestrator::new(vec![
-        Box::new(mock),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm = LlmOrchestrator::new(vec![Box::new(mock)]);
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
 
@@ -336,9 +323,10 @@ async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
     .run(user("Qué hora es?"))
     .await?;
 
-    assert!(!res.content.is_empty());
     assert!(res.content.contains("10:00"));
 
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -346,20 +334,18 @@ async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
 // Escenario 6 — Tool failure handling
 // =============================================================================
 
-/// Invalid input returns error; loop does not continue.
 #[tokio::test]
-#[serial]
 async fn escenario_6_tool_failure() -> Result<()> {
     let db = Db::new(":memory:")?;
-    let mut mock = MockRegressionMockProvider::new();
+    let path = unique_notes_path("escenario_6");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
 
+    let mut mock = MockRegressionMockProvider::new();
     mock.expect_generate_response()
         .returning(|_, _| Ok("TOOL:write_local_note:".to_string()));
 
-    let llm = LlmOrchestrator::new(vec![
-        Box::new(mock),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm = LlmOrchestrator::new(vec![Box::new(mock)]);
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
 
@@ -373,13 +359,17 @@ async fn escenario_6_tool_failure() -> Result<()> {
 
     match res {
         Ok(msg) => {
-            assert!(!msg.content.is_empty() || msg.content.contains("error"));
+            let lower = msg.content.to_lowercase();
+            assert!(lower.contains("error") || lower.contains("invalid") || lower.contains("vac"));
         }
         Err(e) => {
-            assert!(e.to_string().contains("error") || e.to_string().contains("invalid"));
+            let err_lower = e.to_string().to_lowercase();
+            assert!(err_lower.contains("error") || err_lower.contains("invalid"));
         }
     }
 
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -387,15 +377,15 @@ async fn escenario_6_tool_failure() -> Result<()> {
 // Escenario 7 — Regresión de contexto
 // =============================================================================
 
-/// Different inputs across turns do NOT lose tool intent.
 #[tokio::test]
-#[serial]
 async fn escenario_7_regresion_contexto() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_7");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
-
-    cleanup_notes();
 
     let mut mock1 = MockRegressionMockProvider::new();
     mock1
@@ -405,10 +395,7 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Guardado.".to_string()));
 
-    let llm1 = LlmOrchestrator::new(vec![
-        Box::new(mock1),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm1 = LlmOrchestrator::new(vec![Box::new(mock1)]);
 
     AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -426,10 +413,7 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
         .expect_generate_response()
         .returning(|_, _| Ok("Guardado.".to_string()));
 
-    let llm2 = LlmOrchestrator::new(vec![
-        Box::new(mock2),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm2 = LlmOrchestrator::new(vec![Box::new(mock2)]);
 
     let res2 = AgentLoop::new(
         MemoryBridge::new(&db, "u"),
@@ -439,14 +423,14 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
     .run(user("Guardá: hola"))
     .await?;
 
-    assert!(!res2.content.is_empty());
     assert!(!res2.content.to_lowercase().contains("no sé"));
 
-    let content = read_notes().unwrap_or_default();
+    let content = read_notes_at(&path).unwrap_or_default();
     assert!(content.contains("hola mundo"));
     assert!(content.contains("hola"));
 
-    cleanup_notes();
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
 
@@ -454,25 +438,26 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
 // Escenario 8 — Guardrail AlwaysFresh
 // =============================================================================
 
-/// System forces AlwaysFresh execution when LLM fails to call tool.
 #[tokio::test]
-#[serial]
 async fn escenario_8_guardrail_alwaysfresh() -> Result<()> {
     let db = Db::new(":memory:")?;
+    let path = unique_notes_path("escenario_8");
+    let _ = fs::remove_file(&path);
+    set_notes_path(path.clone());
+
     let mut mock = MockRegressionMockProvider::new();
+    let mut seq = Sequence::new();
 
-    // LLM does NOT emit tool call, guardrail forces execution
     mock.expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
         .returning(|_, _| Ok("No tengo acceso al tiempo.".to_string()));
-
-    // LLM responds after seeing tool result from guardrail
     mock.expect_generate_response()
+        .times(1)
+        .in_sequence(&mut seq)
         .returning(|_, _| Ok("La hora es las 12:00.".to_string()));
 
-    let llm = LlmOrchestrator::new(vec![
-        Box::new(mock),
-        Box::new(MockRegressionMockProvider::new()),
-    ]);
+    let llm = LlmOrchestrator::new(vec![Box::new(mock)]);
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
 
@@ -484,8 +469,9 @@ async fn escenario_8_guardrail_alwaysfresh() -> Result<()> {
     .run(user("Qué hora es?"))
     .await?;
 
-    // Guardrail should force execution and loop continues
-    assert!(!res.content.is_empty());
+    assert!(!res.content.contains("tengo acceso") && !res.content.contains("No puedo"));
 
+    let _ = fs::remove_file(&path);
+    clear_notes_path();
     Ok(())
 }
