@@ -28,6 +28,18 @@ mock! {
 }
 
 // =============================================================================
+// Automatic Cleanup Guard
+// =============================================================================
+
+struct NotesPathGuard;
+
+impl Drop for NotesPathGuard {
+    fn drop(&mut self) {
+        clear_notes_path();
+    }
+}
+
+// =============================================================================
 // Shared Test Helpers
 // =============================================================================
 
@@ -62,6 +74,7 @@ async fn escenario_1_write_read_basico() -> Result<()> {
     let path = unique_notes_path("escenario_1");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let mut mock = MockRegressionMockProvider::new();
     mock.expect_generate_response()
@@ -89,7 +102,6 @@ async fn escenario_1_write_read_basico() -> Result<()> {
     );
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -153,7 +165,6 @@ async fn escenario_2_idempotencia() -> Result<()> {
     assert_eq!(count, 1, "Should have exactly one entry (idempotency)");
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -218,7 +229,6 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
     );
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -232,6 +242,7 @@ async fn escenario_4_alwaysfresh_time() -> Result<()> {
     let path = unique_notes_path("escenario_4");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let mut mock = MockRegressionMockProvider::new();
     let mut seq = Sequence::new();
@@ -277,7 +288,6 @@ async fn escenario_4_alwaysfresh_time() -> Result<()> {
     assert!(res2.content.contains("10:01") || res2.content != res1.content);
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -291,6 +301,7 @@ async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
     let path = unique_notes_path("escenario_5");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let mut mock = MockRegressionMockProvider::new();
     let mut seq = Sequence::new();
@@ -326,7 +337,6 @@ async fn escenario_5_no_duplicate_in_loop() -> Result<()> {
     assert!(res.content.contains("10:00"));
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -340,6 +350,7 @@ async fn escenario_6_tool_failure() -> Result<()> {
     let path = unique_notes_path("escenario_6");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let mut mock = MockRegressionMockProvider::new();
     mock.expect_generate_response()
@@ -369,7 +380,6 @@ async fn escenario_6_tool_failure() -> Result<()> {
     }
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -430,7 +440,6 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
     assert!(content.contains("hola"));
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }
 
@@ -444,6 +453,7 @@ async fn escenario_8_guardrail_alwaysfresh() -> Result<()> {
     let path = unique_notes_path("escenario_8");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let mut mock = MockRegressionMockProvider::new();
     let mut seq = Sequence::new();
@@ -472,6 +482,5 @@ async fn escenario_8_guardrail_alwaysfresh() -> Result<()> {
     assert!(!res.content.contains("tengo acceso") && !res.content.contains("No puedo"));
 
     let _ = fs::remove_file(&path);
-    clear_notes_path();
     Ok(())
 }

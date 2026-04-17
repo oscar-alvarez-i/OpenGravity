@@ -16,6 +16,15 @@ pub fn clear_notes_path() {
     NOTES_PATH.with(|p| *p.borrow_mut() = None);
 }
 
+/// Resolves the notes file path.
+///
+/// Resolution order (intended ONLY for testing):
+/// 1. Thread-local override via set_notes_path() (tests)
+/// 2. OPEN_GRAVITY_NOTES_PATH environment variable (tests)
+/// 3. Default: cwd/local_notes.txt (runtime)
+///
+/// Note: Thread-local and env var overrides are NOT part of the public runtime contract.
+/// They exist purely to enable test isolation and should not be used in production.
 fn resolve_notes_path() -> std::path::PathBuf {
     NOTES_PATH.with(|p| p.borrow().clone()).unwrap_or_else(|| {
         std::env::var("OPEN_GRAVITY_NOTES_PATH")
