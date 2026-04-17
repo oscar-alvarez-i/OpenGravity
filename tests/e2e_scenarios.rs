@@ -115,6 +115,7 @@ async fn escenario_2_idempotencia() -> Result<()> {
     let path = unique_notes_path("escenario_2");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
@@ -178,6 +179,7 @@ async fn escenario_3_inputs_distintos() -> Result<()> {
     let path = unique_notes_path("escenario_3");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
@@ -393,6 +395,7 @@ async fn escenario_7_regresion_contexto() -> Result<()> {
     let path = unique_notes_path("escenario_7");
     let _ = fs::remove_file(&path);
     set_notes_path(path.clone());
+    let _guard = NotesPathGuard;
 
     let registry = Registry::new();
     let skill_registry = SkillRegistry::new();
