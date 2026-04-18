@@ -86,10 +86,7 @@ impl<'a> AgentLoop<'a> {
         // 1. Recover memory and filter stale tool results
         let conversation = self.memory.fetch_conversation_only(6)?;
         let memories = self.memory.fetch_memories_only(20, 4)?;
-        let raw_context: Vec<Message> = memories
-            .into_iter()
-            .chain(conversation.into_iter())
-            .collect();
+        let raw_context: Vec<Message> = memories.into_iter().chain(conversation).collect();
         let context = prepare_initial_context(&self.planner, raw_context);
 
         // Save initial user message to db immediately
