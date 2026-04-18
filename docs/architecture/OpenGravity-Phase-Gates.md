@@ -790,7 +790,7 @@ Formalizar contrato de errores de tools locales con definición explícita de ca
 ---
 
 # Phase 2.9 — Personal Execution Layer Certification
-Status: PENDING
+Status: CLOSED
 
 ## Objetivo
 
@@ -818,6 +818,73 @@ Cerrar formalmente el HITO 2 con documentación completa de contratos finales.
 - Sistema auditado
 - Listo para cierre de hito
 - Documentación completa en Phase-Gates y Active-State
+
+---
+
+# Phase 2.10 — Idempotency Enforcement
+Status: CLOSED
+
+## Objetivo
+
+Garantizar que write_local_note no ejecute duplicados cuando el mismo tool + input aparece en el historial de conversación.
+
+## Scope permitido
+
+- Idempotency basada en historial de mensajes
+- Detección de duplicados via Tool messages
+- Exención de tools AlwaysFresh (get_current_time)
+- Formato de Tool message con tool name + input
+
+## Scope prohibido
+
+- Persistencia de idempotency entre reinicios
+- Persistencia distribuida
+- Nuevos subsistemas
+
+## Constraints adicionales
+
+- No modificar arquitectura de executor
+- No cambiar comportamiento de AlwaysFresh tools
+- Matching debe ser determinístico (sin fuzzy matching)
+
+## Acceptance
+
+- Duplicate prevention E2E funciona ✓
+- get_current_time ejecuta siempre (no bloqueado) ✓
+- Tests green (254 total) ✓
+- Validación obligatoria pasa ✓
+- Matching es determinístico (strict parsing) ✓
+
+## Implementation
+
+### Idempotency Logic (src/agent/executor.rs)
+
+- Historial completo pasado via `history_for_idempotency` parameter
+- Solo herramientas Cacheable sujetas a idempotency
+- Matching usa strict parsing:
+  ```
+  "Tool result available: <tool>:<input>; <output>"
+  ```
+- Extract: `<tool>:<input>` before first `;`
+- Compare: exact match con `format!("{}:{}", tool_name, input)`
+
+### Tool Message Format
+
+- Success: `"Tool result available: <tool>:<input>; <result>"`
+- Error: `"Tool execution error: <error>"`
+- Semicolon delimiter permite parsing determinístico
+
+### AgentLoop Integration (src/agent/loop.rs)
+
+- `unfiltered_history` se actualiza con resultados de cada iteración
+- Pasado al executor para idempotency check
+- Decoupling: historial filtrado para LLM vs. histórico completo para idempotency
+
+## Known Limitations
+
+- Idempotency NO es persistente entre reinicios de proceso
+- NO se comparte entre instancias distribuidas
+- Depende de historial en memoria del agent loop
 
 ---
 

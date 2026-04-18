@@ -112,6 +112,40 @@ Toda ejecución debe pasar por tools explícitas.
 
 1.1.x
 
+## Future Improvement — Notes Persistence (write_local_note)
+
+### Context
+Actualmente `write_local_note` persiste en filesystem (`local_notes.txt`).
+
+Esto fue suficiente para HITO 2, pero presenta limitaciones:
+- No hay deduplicación estructural
+- No hay query semántica
+- No hay relación con memoria del agente
+- Idempotencia depende de estado en memoria (executor)
+
+### Decision
+Se decide NO migrar a DB en HITO 2.
+
+### Rationale
+- No es necesario para validar loop + tools + invariantes
+- Introduce complejidad (schema, migrations, queries)
+- Puede interferir con validación E2E actual
+
+### Future Direction (HITO 3+)
+Migrar `write_local_note` a persistencia en DB:
+- Tabla: `notes`
+  - id
+  - content
+  - created_at
+  - hash (para idempotencia persistente)
+- Permitir:
+  - deduplicación real (hash)
+  - query futura (search / retrieval)
+  - integración con memoria
+
+### Invariant Target (post-migration)
+> Misma nota no debe persistirse dos veces (idempotencia fuerte, persistente)
+
 ---
 
 # HITO 3 — File Intelligence Layer

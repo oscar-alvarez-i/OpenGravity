@@ -59,6 +59,10 @@ fn prepare_iteration_context(planner: &Planner, messages: &[Message]) -> Vec<Mes
     planner.compact_context(&filtered)
 }
 
+fn build_llm_context(active: &[Message]) -> Vec<Message> {
+    active.to_vec()
+}
+
 pub struct AgentLoop<'a> {
     memory: MemoryBridge<'a>,
     planner: Planner,
@@ -82,10 +86,7 @@ impl<'a> AgentLoop<'a> {
         // 1. Recover memory and filter stale tool results
         let conversation = self.memory.fetch_conversation_only(6)?;
         let memories = self.memory.fetch_memories_only(20, 4)?;
-        let raw_context: Vec<Message> = memories
-            .into_iter()
-            .chain(conversation.into_iter())
-            .collect();
+        let raw_context: Vec<Message> = memories.into_iter().chain(conversation).collect();
         let context = prepare_initial_context(&self.planner, raw_context);
 
         // Save initial user message to db immediately
@@ -95,6 +96,9 @@ impl<'a> AgentLoop<'a> {
         let system_prompt = self.planner.build_system_prompt();
         let mut active_messages = context;
         active_messages.push(incoming_msg.clone());
+
+        // Keep unfiltered history for idempotency checks (updated each iteration with results)
+        let mut unfiltered_history = active_messages.clone();
 
         let mut iterations = 0;
 
@@ -106,9 +110,13 @@ impl<'a> AgentLoop<'a> {
             active_messages = prepare_iteration_context(&self.planner, &active_messages);
 
             // 4-6. Query LLM, detect, execute
+            // Build context for LLM from filtered messages
+            let llm_context = build_llm_context(&active_messages);
+
+            // Pass unfiltered history for idempotency; filtered context for LLM
             let step_result = self
                 .executor
-                .execute_step(&system_prompt, &active_messages)
+                .execute_step(&system_prompt, &llm_context, Some(&unfiltered_history))
                 .await?;
 
             let StepResult {
@@ -165,6 +173,11 @@ impl<'a> AgentLoop<'a> {
                 if let Err(e) = self.memory.save_memory_update(update) {
                     warn!("Failed to save memory update: {}", e);
                 }
+            }
+
+            // Update unfiltered history with step results for next iteration's idempotency check
+            for msg in &step_messages {
+                unfiltered_history.push(msg.clone());
             }
 
             if !should_continue {
@@ -314,7 +327,7 @@ mod tests {
 
         let mut groq = MockLlmProvider::new();
         groq.expect_generate_response()
-            .returning(|_, _| Box::pin(async { Ok("TOOL:get_current_time".to_string()) }));
+            .returning(|_, _| Box::pin(async { Ok("TOOL:write_local_note:hola".to_string()) }));
 
         let or = MockLlmProvider::new();
         let llm = LlmOrchestrator::new(vec![Box::new(groq), Box::new(or)]);
@@ -324,12 +337,15 @@ mod tests {
         let mut agent_loop = AgentLoop::new(memory, planner, executor);
 
         let res = agent_loop
-            .run(Message::new(crate::domain::message::Role::User, "time?"))
+            .run(Message::new(
+                crate::domain::message::Role::User,
+                "save note?",
+            ))
             .await;
 
         assert!(
             res.is_ok(),
-            "Should terminate after tool result blocks second call"
+            "Should terminate: idempotency blocks second tool call in same turn"
         );
     }
 

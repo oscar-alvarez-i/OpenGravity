@@ -21,193 +21,103 @@ Detail maintained in: `OpenGravity-Phase-Gates.md`
 
 ---
 
-## HITO 2 — Personal Execution Layer (ACTIVE)
+## HITO 2 — Personal Execution Layer (CLOSED)
 
 - Phase 2.1: CLOSED (write_local_note)
 - Phase 2.2: CLOSED (Tool Execution Layer)
+- Phase 2.3: CLOSED (Skill Execution Ordering)
 - Phase 2.4: CLOSED (observability)
 - Phase 2.5: CLOSED (read_local_notes)
 - Phase 2.6: CLOSED (Filesystem IO Contract Closure)
 - Phase 2.7: CLOSED (Tool Execution Path Cleanup)
 - Phase 2.8: CLOSED (Local Tool Error Contract)
-- Phase 2.9: PENDING (HITO Certification)
-
-Tools disponibles:
-  - write_local_note
-  - read_local_notes
-- Acceso local completo: write + read sobre archivo sandboxed
-- Branch actual: main (workflow mergeado)
-- Next: Phase 2.9
-
----
-
-## Phase 2.6 — Filesystem IO Contract Closure (CLOSED)
-
-## Objetivo
-
-Unificar acceso IO a filesystem en único punto interno.
-
-## Scope
-
-- Factorización de helpers internos
-- Reutilizar resolve_note_path() y validate_note_path()
-
-## Acceptance
-
-- Sin duplicación
-- tests green
-- validación mínima pasa
-
----
-
-## Phase 2.7 — Tool Execution Path Cleanup (CLOSED)
-
-## Objetivo
-
-Eliminar execute_tool() legacy, usar solo ToolRegistry::execute()
-
-## Acceptance
-
-- Single execution path
-- sin regresión
-
----
-- Verified: no legacy execute_tool() present in codebase
-- Tool execution path is fully unified via ToolRegistry::execute()
-- No code changes were required for this phase
-
----
-
-## Phase 2.8 — Local Tool Error Contract (CLOSED)
-
-## Objetivo
-
-Formalizar contrato de errores de tools locales.
-
-## Scope
-
-- archivo inexistente
-- input inválido
-- error de IO
-
-## Acceptance
-
-- errores documentados ✓
-- tests de error coverage ✓
-
-## Implementation
-
-- Full error surface mapped for write_local_note and read_local_notes
-- Tests added:
-  - test_read_invalid_path_outside_cwd: path outside cwd validation
-  - test_read_invalid_path_is_directory: directory at file path validation
-- IO errors documented as non-deterministically testable
-- All 246 tests pass
-
----
-
-## Phase 2.9 — HITO 2 Certification (PENDING)
-
-## Objetivo
-
-Cierre formal del HITO 2.
-
-## Scope
-
-- documentación de contratos finales
-- explicitación de limitaciones
-- tests faltantes
-
-## Acceptance
-
-- sin deuda implícita
-- sistema auditado
-- listo para cierre
-
----
-
-## Phase 2.2 — Tool Execution Layer (CLOSED)
-
----
-
-# Runtime invariants
-
-## Branch execution order
-
-1. pending_plan → 2. skill (factual) → 3. skill (full) → 4. planner → 5. LLM → 6. tool
-
-## MAX_LOOP_ITERATIONS = 4
-
-## Freshness semantics
-
-- AlwaysFresh: get_current_time (ignora duplicate prevention)
-- Cacheable (default): otras tools previenen duplicates
-
-## Tool protocol
-
-- TOOL:tool_name en última línea no-vacía
-- Contenido después de TOOL causa rechazo
-
-## Memory semantics
-
-- Last-write-wins por key
-- Duplicate suppression activo
-- Transient facts filtrados (hoy, ahora, etc.)
-
----
-
-# Confirmado estable
-
-- executor branch tracing activo
-- memory extraction + persistence activo
-- freshness decision tracing activo
-- semantic overwrite de facts funcionando
-- planner multi-step activo
-- SQLite persistencia estable
-- runtime context compression activo
-
----
-
-# Runtime validado esperado
-
-Input: "Mi color favorito es verde y después decime la hora"
-
-Output esperado:
-1. memory update
-2. pending_plan
-3. tool fresh execution
-4. respuesta final ≤3 iteraciones
-
----
-
-# Restricciones activas
-
-## get_current_time
-
-Siempre fresh, no reutilizar resultado stale.
-
-## write_local_note
-
-- Path fijo: ./local_notes.txt
-- Append-only, single-line input
-- Freshness: Cacheable
-
----
-
-# Objetivo inmediato de trabajo
-
-Phase 2.9 (próxima)
-
----
-
-# Scope prohibido
-
-- refactor estructural amplio
-- planner rewrite
-- provider redesign
-- autonomous operations
-
-sin gate documental previo.
+- Phase 2.9: CLOSED (Certification)
+- Phase 2.10: CLOSED (Idempotency Enforcement)
+
+### Tooling Layer
+
+Tools registradas:
+- write_local_note (write)
+- read_local_notes (read)
+
+Capabilities:
+- Persistencia local (filesystem sandbox)
+- Lectura completa del histórico de notas
+- Enforcement de invariantes de tool execution (executor-level)
+
+### write_local_note
+
+- Persistencia: filesystem (`local_notes.txt`)
+- Input constraint: single-line only (enforced at executor level)
+- Idempotencia: in-memory via full message history
+- Input validation: enforced against original user message (pre-LLM normalization)
+
+#### Idempotency Scope (Phase 2.10)
+
+- **Implementation**: Full unfiltered message history scanning
+- **Source of truth**: Tool messages with format `"Tool result available: <tool>:<input>; <output>"`
+- **Matching**: Strict parsing (exact match on `<tool>:<input>`)
+- **Exemption**: AlwaysFresh tools (`get_current_time`) bypass idempotency
+
+#### Guarantees
+
+- No duplicate execution for same tool + input within a runtime session
+- Cross-turn protection inside agent loop
+- Deterministic behavior (no fuzzy matching)
+
+#### Limitations
+
+- NOT persisted across process restarts
+- NOT shared across distributed instances
+- Depends on in-memory history (AgentLoop)
+
+#### Invariants
+- Multiline user input → tool MUST NOT execute
+- Same tool + same input (same runtime instance) → MUST NOT execute twice
+- AlwaysFresh tool → always executes (no idempotency check)
+
+#### E2E Validation Scenarios
+
+**Scenario 1 — First execution**
+```
+User: "Guardá hola"
+→ Tool executes
+→ Tool message stored: "Tool result available: write_local_note:hola; nota guardada"
+```
+
+**Scenario 2 — Different input**
+```
+User: "Guardá chau"
+→ Tool executes (input differs)
+→ Tool message stored: "Tool result available: write_local_note:chau; nota guardada"
+```
+
+**Scenario 3 — Same input (IDEMPOTENCY)**
+```
+User: "Guardá hola"
+→ Tool executes
+→ Tool message stored
+
+User: "Guardá hola"
+→ Idempotency detected (name + input match)
+→ Tool MUST NOT execute
+→ Assistant returns idempotency message
+→ local_notes.txt has ONE entry for "hola"
+```
+
+**Scenario 4 — AlwaysFresh tool**
+```
+User: "¿Qué hora es?"
+→ Tool executes every time
+→ No idempotency check applied
+→ get_current_time alwaysFresh
+```
+
+#### Planned
+- Persistence to DB in future phases (see Roadmap)
+
+### References
+- Tool execution semantics: `docs/architecture/tool-invocation.md`
 
 ---
 
